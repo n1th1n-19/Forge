@@ -1,4 +1,5 @@
 pub mod aws;
+pub mod bun;
 pub mod cli_tools;
 pub mod core;
 pub mod docker;
@@ -65,6 +66,7 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(vcs::GithubCLI),
         // Languages
         Box::new(node::Node),
+        Box::new(bun::Bun),
         Box::new(python::Python),
         Box::new(jdk::JDK),
         Box::new(go::Go),
@@ -95,12 +97,24 @@ pub fn version_of(cmd: &str, args: &[&str]) -> Option<String> {
         .ok()
         .map(|o| {
             let out = if o.stdout.is_empty() { o.stderr } else { o.stdout };
-            String::from_utf8_lossy(&out)
+            let first_line = String::from_utf8_lossy(&out)
                 .lines()
                 .next()
                 .unwrap_or("")
                 .trim()
-                .to_string()
+                .to_string();
+            // Keep only first token-group before a long parenthetical or URL
+            let short = first_line
+                .split(" (")
+                .next()
+                .unwrap_or(&first_line)
+                .trim()
+                .to_string();
+            if short.len() > 40 {
+                short[..40].trim().to_string()
+            } else {
+                short
+            }
         })
         .filter(|s| !s.is_empty())
 }

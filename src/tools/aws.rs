@@ -1,4 +1,4 @@
-use super::{version_of, Category, Tool};
+use super::{Category, Tool};
 use crate::package_manager::PackageManager;
 use anyhow::{bail, Result};
 use std::process::Command;
@@ -10,7 +10,22 @@ impl Tool for AwsCLI {
     fn description(&self) -> &str { "awscli.amazonaws.com official" }
     fn category(&self) -> Category { Category::DevOps }
     fn is_installed(&self) -> bool { which::which("aws").is_ok() }
-    fn version(&self) -> Option<String> { version_of("aws", &["--version"]) }
+    fn version(&self) -> Option<String> {
+        std::process::Command::new("aws")
+            .arg("--version")
+            .output()
+            .ok()
+            .and_then(|o| {
+                let out = if o.stdout.is_empty() {
+                    String::from_utf8_lossy(&o.stderr).to_string()
+                } else {
+                    String::from_utf8_lossy(&o.stdout).to_string()
+                };
+                out.split_whitespace()
+                    .find(|t| t.starts_with("aws-cli/"))
+                    .map(|t| t.to_string())
+            })
+    }
 
     fn install(&self, pm: &PackageManager) -> Result<()> {
         match pm {

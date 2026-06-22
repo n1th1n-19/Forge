@@ -25,8 +25,22 @@ impl Tool for OhMyZsh {
     }
     fn version(&self) -> Option<String> {
         let home = std::env::var("HOME").unwrap_or_default();
-        let path = format!("{}/.oh-my-zsh/THIS_IS_OH_MY_ZSH", home);
-        if std::path::Path::new(&path).exists() {
+        // Read version from oh-my-zsh changelog or git describe
+        let omz_dir = format!("{}/.oh-my-zsh", home);
+        let head = format!("{}/.git/HEAD", omz_dir);
+        if std::path::Path::new(&omz_dir).exists() {
+            // Try to get commit short hash as version
+            if std::path::Path::new(&head).exists() {
+                if let Ok(out) = std::process::Command::new("git")
+                    .args(["-C", &omz_dir, "rev-parse", "--short", "HEAD"])
+                    .output()
+                {
+                    let hash = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    if !hash.is_empty() {
+                        return Some(format!("git@{}", hash));
+                    }
+                }
+            }
             Some(String::from("installed"))
         } else {
             None

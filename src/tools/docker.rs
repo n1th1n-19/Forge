@@ -10,7 +10,15 @@ impl Tool for Docker {
     fn description(&self) -> &str { "get.docker.com official script" }
     fn category(&self) -> Category { Category::DevOps }
     fn is_installed(&self) -> bool { which::which("docker").is_ok() }
-    fn version(&self) -> Option<String> { version_of("docker", &["--version"]) }
+    fn version(&self) -> Option<String> {
+        // "Docker version 29.5.3, build d1c06ef" → "29.5.3"
+        version_of("docker", &["--version"]).map(|s| {
+            s.split_whitespace()
+                .find(|t| t.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false))
+                .map(|t| t.trim_end_matches(',').to_string())
+                .unwrap_or(s)
+        })
+    }
 
     fn install(&self, pm: &PackageManager) -> Result<()> {
         match pm {
