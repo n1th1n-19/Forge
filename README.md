@@ -1,46 +1,22 @@
-```
-                                          ..
-                                        .:-:
-                                      ..=%-..
-                                     ..-@@-..
-                                    .:@@@+-...
-                                   ..:@++*+:....@.
-                                 ::..:#****+-:.:.
-                                .....:-@@*%@@@-:....@:.
-                                ..::..:=++++++=-:...=::.
-                               ..:@-..:-%+%@@@@@-:...-@#..
-                             ..:-#%-..:::=%%%%%%%:...-@@@.
-                            ..:=+==:....::=++++=#:..:=++=:.
-                           .:#@%+-:::@:.-=#%%%#%#:::%%%%%:.
-                          .::===-:.--:.:========-:-====+-:.
-                         ..%%%%%:....:%%%-=--%%%:==#%%#%:..
-                         ..-----:..::-=---::--::-----=-:....
-                         .###%#%=.:#%%#%-:-#=::%#+-*%#:...:.
-                         .::::::::-:--::..::.:::---:-:..::-:.
-                         ..+***.:=+###.:-.-..##%#-.:%##%#+-:.
-                          ..:::..:::::..::...::::...:--:-:..
-                           ...=+-..-+++:.:=:..*++-...-*+=..
-                        .::::::::::::::::::::::::::::::::::::::::::::::
-         .****-****:***+-=:..........................................:=.
-          -%:.        .:-+%%%.%%:%%*%%%%:%%.%%.%%.%%%.%%.%%%:%%%%%%%:%=.
-           .:%..       .%%%:.
-             ..%:..
-                ..:%:....
-                    ...:-%%%%=%%.
-                              ..::.
-                                .::
-                                .::
-                              ..:-.
-                            .:%:.
-                         ..+:.       .::#++++*:..
-                        .*:.       .%:..      ..%:.
-                        .::........%.           .::........::
-                         ...........              ...........
-```
+<p align="center">
+  <img src="assets/forge.png" alt="forge logo" width="180" />
+</p>
 
-# forge
+<h1 align="center">forge</h1>
 
-Interactive developer environment setup CLI. Detects your OS and distro, shows a checklist of tools, installs only what you select — all from official sources.
+<p align="center">
+  Interactive developer environment setup CLI.<br/>
+  Detects your OS and distro, shows a checklist of tools,<br/>
+  installs only what you select — all from official sources.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.1.0-orange" alt="version" />
+  <img src="https://img.shields.io/badge/built%20with-Rust-orange?logo=rust" alt="rust" />
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="license" />
+</p>
+
+---
 
 ## Install
 
@@ -53,6 +29,16 @@ Then run:
 ```sh
 forge
 ```
+
+---
+
+## Preview
+
+<p align="center">
+  <img src="assets/forge-ascii.png" alt="forge terminal preview" width="480" />
+</p>
+
+---
 
 ## Supported Platforms
 
@@ -67,6 +53,8 @@ forge
 | WSL | inherits Linux distro above |
 
 > Windows (Git Bash / native): not supported — use WSL.
+
+---
 
 ## Tools
 
@@ -96,6 +84,8 @@ forge
 | 22 | zsh | Shell | distro package |
 | 23 | Oh My Zsh | Shell | [ohmyz.sh](https://ohmyz.sh) |
 | 24 | Starship | Shell | [starship.rs](https://starship.rs) |
+
+---
 
 ## Usage
 
@@ -132,6 +122,8 @@ forge check
 forge uninstall gcloud terraform php
 ```
 
+---
+
 ## Build from Source
 
 Requires Rust 1.70+.
@@ -143,9 +135,11 @@ cargo build --release
 sudo mv target/release/forge /usr/local/bin/forge
 ```
 
+---
+
 ## Releases
 
-Pre-compiled binaries for all platforms are published automatically on each tagged release via GitHub Actions.
+Pre-compiled binaries published automatically on each tagged release via GitHub Actions.
 
 | Target | Binary |
 |--------|--------|
@@ -153,6 +147,8 @@ Pre-compiled binaries for all platforms are published automatically on each tagg
 | Linux aarch64 | `forge-aarch64-unknown-linux-gnu` |
 | macOS x86\_64 | `forge-x86_64-apple-darwin` |
 | macOS Apple Silicon | `forge-aarch64-apple-darwin` |
+
+---
 
 ## Contributing
 
