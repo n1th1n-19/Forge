@@ -21,7 +21,7 @@
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/n1th1n-19/forge/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/n1th1n-19/Forge/master/install.sh | bash
 ```
 
 Then run:
@@ -129,7 +129,7 @@ forge uninstall gcloud terraform php
 Requires Rust 1.70+.
 
 ```sh
-git clone https://github.com/n1th1n-19/forge
+git clone https://github.com/n1th1n-19/Forge
 cd forge
 cargo build --release
 sudo mv target/release/forge /usr/local/bin/forge
