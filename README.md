@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.0-orange" alt="version" />
+  <img src="https://img.shields.io/badge/version-0.2.0-orange" alt="version" />
   <img src="https://img.shields.io/badge/built%20with-Rust-orange?logo=rust" alt="rust" />
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="license" />
 </p>
