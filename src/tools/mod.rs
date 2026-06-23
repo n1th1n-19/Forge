@@ -16,6 +16,10 @@ pub mod shell;
 pub mod terraform;
 pub mod vcs;
 
+pub mod build;
+pub mod databases;
+pub mod mobile;
+
 use crate::package_manager::PackageManager;
 use anyhow::Result;
 
@@ -28,18 +32,24 @@ pub enum Category {
     DevOps,
     CliTools,
     Shell,
+    Mobile,
+    Databases,
+    Build,
 }
 
 impl std::fmt::Display for Category {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Category::Core => write!(f, "CORE"),
-            Category::Editors => write!(f, "EDITORS"),
+            Category::Core          => write!(f, "CORE"),
+            Category::Editors       => write!(f, "EDITORS"),
             Category::VersionControl => write!(f, "VERSION CONTROL"),
-            Category::Languages => write!(f, "LANGUAGES"),
-            Category::DevOps => write!(f, "DEVOPS & CLOUD"),
-            Category::CliTools => write!(f, "CLI TOOLS"),
-            Category::Shell => write!(f, "SHELL"),
+            Category::Languages     => write!(f, "LANGUAGES"),
+            Category::DevOps        => write!(f, "DEVOPS & CLOUD"),
+            Category::CliTools      => write!(f, "CLI TOOLS"),
+            Category::Shell         => write!(f, "SHELL"),
+            Category::Mobile        => write!(f, "MOBILE"),
+            Category::Databases     => write!(f, "DATABASES"),
+            Category::Build         => write!(f, "BUILD & INFRA"),
         }
     }
 }
@@ -87,6 +97,24 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
         Box::new(shell::Zsh),
         Box::new(shell::OhMyZsh),
         Box::new(shell::Starship),
+        // Mobile
+        Box::new(mobile::android_studio::AndroidStudio),
+        Box::new(mobile::android_tools::AndroidPlatformTools),
+        Box::new(mobile::flutter::Flutter),
+        Box::new(mobile::react_native::ReactNative),
+        Box::new(mobile::xcode::XcodeTools),
+        Box::new(mobile::cocoapods::CocoaPods),
+        // Databases
+        Box::new(databases::postgres::PostgresClient),
+        Box::new(databases::mysql::MySQLClient),
+        Box::new(databases::mongodb::MongoshClient),
+        Box::new(databases::redis::RedisClient),
+        // Build & Infra
+        Box::new(build::maven::Maven),
+        Box::new(build::gradle::Gradle),
+        Box::new(build::cmake::CMakeNinja),
+        Box::new(build::kubectl::KubectlHelm),
+        Box::new(build::podman::Podman),
     ]
 }
 
@@ -103,7 +131,6 @@ pub fn version_of(cmd: &str, args: &[&str]) -> Option<String> {
                 .unwrap_or("")
                 .trim()
                 .to_string();
-            // Keep only first token-group before a long parenthetical or URL
             let short = first_line
                 .split(" (")
                 .next()

@@ -84,6 +84,21 @@ forge
 | 22 | zsh | Shell | distro package |
 | 23 | Oh My Zsh | Shell | [ohmyz.sh](https://ohmyz.sh) |
 | 24 | Starship | Shell | [starship.rs](https://starship.rs) |
+| 25 | Android Studio | Mobile | [developer.android.com/studio](https://developer.android.com/studio) |
+| 26 | Android Platform Tools | Mobile | [developer.android.com](https://developer.android.com/studio/releases/platform-tools) |
+| 27 | Flutter + Dart | Mobile | [flutter.dev](https://flutter.dev) |
+| 28 | React Native + Expo | Mobile | [reactnative.dev](https://reactnative.dev) |
+| 29 | Xcode CLI Tools | Mobile | macOS only — `xcode-select --install` |
+| 30 | CocoaPods | Mobile | macOS only — [cocoapods.org](https://cocoapods.org) |
+| 31 | PostgreSQL client | Databases | [postgresql.org](https://www.postgresql.org) |
+| 32 | MySQL client | Databases | [dev.mysql.com](https://dev.mysql.com) |
+| 33 | mongosh | Databases | [mongodb.com](https://www.mongodb.com/try/download/shell) |
+| 34 | redis-cli | Databases | [redis.io](https://redis.io) |
+| 35 | Maven | Build & Infra | [maven.apache.org](https://maven.apache.org) |
+| 36 | Gradle | Build & Infra | [gradle.org](https://gradle.org) |
+| 37 | CMake + Ninja | Build & Infra | [cmake.org](https://cmake.org) |
+| 38 | kubectl + Helm | Build & Infra | [kubernetes.io](https://kubernetes.io/docs/tasks/tools/) |
+| 39 | Podman | Build & Infra | [podman.io](https://podman.io) |
 
 ---
 
