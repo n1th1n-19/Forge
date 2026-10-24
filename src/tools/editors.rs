@@ -26,9 +26,9 @@ impl Tool for VSCode {
             PackageManager::Brew => pm.install_cask(&["visual-studio-code"]),
             PackageManager::Apt => {
                 sh(&format!(
-                    "curl -fsSL {MS_KEY} | gpg --batch --yes --dearmor -o /tmp/microsoft.gpg && \
-                     sudo install -D -o root -g root -m 644 /tmp/microsoft.gpg /etc/apt/keyrings/microsoft.gpg && \
-                     rm -f /tmp/microsoft.gpg && \
+                    "sudo mkdir -p -m 755 /etc/apt/keyrings && \
+                     curl -fsSL {MS_KEY} | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/microsoft.gpg && \
+                     sudo chmod 644 /etc/apt/keyrings/microsoft.gpg && \
                      echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main\" \
                      | sudo tee /etc/apt/sources.list.d/vscode.list > /dev/null"
                 ))?;
