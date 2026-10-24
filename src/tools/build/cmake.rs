@@ -11,22 +11,13 @@ impl Tool for CMakeNinja {
     fn is_installed(&self) -> bool { which::which("cmake").is_ok() && which::which("ninja").is_ok() }
     fn version(&self) -> Option<String> { version_of("cmake", &["--version"]) }
 
-    fn install(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt    => pm.install(&["cmake", "ninja-build"]),
-            PackageManager::Dnf | PackageManager::Yum => pm.install(&["cmake", "ninja-build"]),
-            PackageManager::Pacman => pm.install(&["cmake", "ninja"]),
-            PackageManager::Zypper => pm.install(&["cmake", "ninja"]),
-            PackageManager::Brew   => pm.install(&["cmake", "ninja"]),
-            _ => pm.install(&["cmake", "ninja-build"]),
-        }
-    }
+    fn install(&self, pm: &PackageManager) -> Result<()> { pm.install(&pkgs(pm)) }
+    fn uninstall(&self, pm: &PackageManager) -> Result<()> { pm.remove(&pkgs(pm)) }
+}
 
-    fn uninstall(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt    => pm.remove(&["cmake", "ninja-build"]),
-            PackageManager::Pacman | PackageManager::Brew => pm.remove(&["cmake", "ninja"]),
-            _ => pm.remove(&["cmake", "ninja-build"]),
-        }
+fn pkgs(pm: &PackageManager) -> [&'static str; 2] {
+    match pm {
+        PackageManager::Pacman | PackageManager::Zypper | PackageManager::Brew => ["cmake", "ninja"],
+        _ => ["cmake", "ninja-build"],
     }
 }

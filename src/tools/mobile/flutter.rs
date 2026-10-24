@@ -1,9 +1,10 @@
-use crate::tools::{version_of, Category, Tool};
+use crate::tools::{add_rc_line, has_snap, remove_rc_lines, sh, snap_has, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
-use anyhow::{bail, Result};
-use std::process::Command;
+use anyhow::Result;
 
 pub struct Flutter;
+
+const PATH_LINE: &str = r#"export PATH="$PATH:$HOME/flutter/bin""#;
 
 impl Tool for Flutter {
     fn name(&self) -> &str { "Flutter" }
@@ -14,22 +15,13 @@ impl Tool for Flutter {
 
     fn install(&self, pm: &PackageManager) -> Result<()> {
         match pm {
-            PackageManager::Brew => pm.install(&["flutter"]),
+            PackageManager::Brew => pm.install_cask(&["flutter"]),
+            _ if has_snap() => sh("sudo snap install flutter --classic"),
             _ => {
-                if which::which("snap").is_ok() {
-                    run_sh("sudo snap install flutter --classic")
-                } else {
-                    // Manual install to ~/.flutter
-                    run_sh(r#"
-                        ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
-                        FLUTTER_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_stable.tar.xz"
-                        curl -fsSL "$FLUTTER_URL" -o /tmp/flutter.tar.xz
-                        tar -xJf /tmp/flutter.tar.xz -C "$HOME"
-                        rm /tmp/flutter.tar.xz
-                        echo 'export PATH="$PATH:$HOME/flutter/bin"' >> "$HOME/.bashrc"
-                        echo 'export PATH="$PATH:$HOME/flutter/bin"' >> "$HOME/.zshrc" 2>/dev/null || true
-                    "#)
-                }
+                // git clone of the stable channel works on every arch (tarballs are x64-only)
+                pm.install(&["git", "unzip", "xz-utils"]).or_else(|_| pm.install(&["git", "unzip", "xz"]))?;
+                sh(r#"git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$HOME/flutter""#)?;
+                add_rc_line(PATH_LINE)
             }
         }
     }
@@ -37,19 +29,11 @@ impl Tool for Flutter {
     fn uninstall(&self, pm: &PackageManager) -> Result<()> {
         match pm {
             PackageManager::Brew => pm.remove(&["flutter"]),
+            _ if snap_has("flutter") => sh("sudo snap remove flutter"),
             _ => {
-                if which::which("snap").is_ok() {
-                    run_sh("sudo snap remove flutter")
-                } else {
-                    run_sh("rm -rf \"$HOME/flutter\"")
-                }
+                sh(r#"rm -rf "$HOME/flutter""#)?;
+                remove_rc_lines(&[PATH_LINE])
             }
         }
     }
-}
-
-fn run_sh(cmd: &str) -> Result<()> {
-    let status = Command::new("sh").arg("-c").arg(cmd).status()?;
-    if !status.success() { bail!("command failed"); }
-    Ok(())
 }

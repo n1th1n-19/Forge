@@ -1,7 +1,6 @@
 use crate::tools::{version_of, Category, Tool};
 use crate::package_manager::PackageManager;
 use anyhow::{bail, Result};
-use std::process::Command;
 
 pub struct CocoaPods;
 
@@ -22,13 +21,7 @@ impl Tool for CocoaPods {
     fn uninstall(&self, pm: &PackageManager) -> Result<()> {
         match pm {
             PackageManager::Brew => pm.remove(&["cocoapods"]),
-            _ => run_sh("sudo gem uninstall cocoapods"),
+            _ => bail!("CocoaPods is macOS only"),
         }
     }
-}
-
-fn run_sh(cmd: &str) -> Result<()> {
-    let status = Command::new("sh").arg("-c").arg(cmd).status()?;
-    if !status.success() { bail!("command failed"); }
-    Ok(())
 }

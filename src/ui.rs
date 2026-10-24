@@ -87,7 +87,7 @@ pub fn print_header(os: &str, pkg: &str) {
 pub fn spinner(msg: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
-        ProgressStyle::with_template("  {spinner:.yellow} {msg}")
+        ProgressStyle::with_template("  {spinner:.yellow} {msg} {elapsed:.dim}")
             .unwrap()
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
@@ -112,6 +112,10 @@ pub fn print_skipped(tool: &str, reason: &str) {
         tool,
         reason.dimmed()
     );
+}
+
+pub fn print_warn(tool: &str, msg: &str) {
+    println!("  {} {:<20} {}", "!".yellow().bold(), tool, msg.yellow().dimmed());
 }
 
 pub fn print_error(tool: &str, err: &str) {

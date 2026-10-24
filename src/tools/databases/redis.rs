@@ -11,21 +11,13 @@ impl Tool for RedisClient {
     fn is_installed(&self) -> bool { which::which("redis-cli").is_ok() }
     fn version(&self) -> Option<String> { version_of("redis-cli", &["--version"]) }
 
-    fn install(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt    => pm.install(&["redis-tools"]),
-            PackageManager::Dnf | PackageManager::Yum => pm.install(&["redis"]),
-            PackageManager::Pacman => pm.install(&["redis"]),
-            PackageManager::Zypper => pm.install(&["redis"]),
-            PackageManager::Brew   => pm.install(&["redis"]),
-            _ => pm.install(&["redis-tools"]),
-        }
-    }
+    fn install(&self, pm: &PackageManager) -> Result<()> { pm.install(&[pkg(pm)]) }
+    fn uninstall(&self, pm: &PackageManager) -> Result<()> { pm.remove(&[pkg(pm)]) }
+}
 
-    fn uninstall(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt  => pm.remove(&["redis-tools"]),
-            _ => pm.remove(&["redis"]),
-        }
+fn pkg(pm: &PackageManager) -> &'static str {
+    match pm {
+        PackageManager::Apt | PackageManager::Unknown => "redis-tools",
+        _ => "redis",
     }
 }

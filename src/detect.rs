@@ -105,11 +105,11 @@ fn parse_os_release(contents: &str) -> Distro {
         }
     }
 
-    let primary = match_distro_name(&id);
-    if primary != Distro::Unknown(id.clone()) {
-        return primary;
+    match (match_distro_name(&id), match_distro_name(&id_like)) {
+        (Distro::Unknown(_), Distro::Unknown(_)) => Distro::Unknown(id),
+        (Distro::Unknown(_), like) => like,
+        (primary, _) => primary,
     }
-    match_distro_name(&id_like)
 }
 
 fn match_distro_name(name: &str) -> Distro {
@@ -131,5 +131,31 @@ fn match_distro_name(name: &str) -> Distro {
         Distro::OpenSUSE
     } else {
         Distro::Unknown(name.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn os_release_uses_id() {
+        assert_eq!(parse_os_release("NAME=\"Fedora\"\nID=fedora\n"), Distro::Fedora);
+    }
+
+    #[test]
+    fn os_release_falls_back_to_id_like() {
+        let pop = "ID=pop\nID_LIKE=\"ubuntu debian\"\n";
+        assert_eq!(parse_os_release(pop), Distro::Ubuntu);
+    }
+
+    #[test]
+    fn manjaro_wins_over_arch() {
+        assert_eq!(match_distro_name("manjaro-arm"), Distro::Manjaro);
+    }
+
+    #[test]
+    fn unknown_distro_keeps_name() {
+        assert_eq!(parse_os_release("ID=nixos\n"), Distro::Unknown("nixos".into()));
     }
 }

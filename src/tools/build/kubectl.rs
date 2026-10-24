@@ -1,9 +1,11 @@
-use crate::tools::{version_of, Category, Tool};
+use crate::tools::{pins, run_remote, sh, Category, Tool};
 use crate::package_manager::PackageManager;
 use anyhow::{bail, Result};
-use std::process::Command;
 
 pub struct KubectlHelm;
+
+// pkgs.k8s.io repos are per-minor; bump when a new minor ships.
+const K8S_MINOR: &str = "v1.37";
 
 impl Tool for KubectlHelm {
     fn name(&self) -> &str { "kubectl + Helm" }
@@ -12,55 +14,59 @@ impl Tool for KubectlHelm {
     fn is_installed(&self) -> bool {
         which::which("kubectl").is_ok() && which::which("helm").is_ok()
     }
-    fn version(&self) -> Option<String> { version_of("kubectl", &["version", "--client", "--short"]) }
+    fn version(&self) -> Option<String> {
+        // `--short` was removed in kubectl 1.28; first line is "Client Version: v1.x.y"
+        let o = std::process::Command::new("kubectl").args(["version", "--client"]).output().ok()?;
+        String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .next()
+            .and_then(|l| l.strip_prefix("Client Version: "))
+            .map(|v| format!("kubectl {v}"))
+    }
 
     fn install(&self, pm: &PackageManager) -> Result<()> {
         match pm {
-            PackageManager::Brew => {
-                pm.install(&["kubectl"])?;
-                pm.install(&["helm"])
-            }
+            PackageManager::Brew => pm.install(&["kubectl", "helm"]),
+            PackageManager::Pacman => pm.install(&["kubectl", "helm"]),
+            PackageManager::Zypper => pm.install(&["kubernetes-client", "helm"]),
             PackageManager::Apt => {
-                // kubectl
-                run_sh("curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg")?;
-                run_sh("echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list")?;
+                sh(&format!(
+                    "sudo mkdir -p -m 755 /etc/apt/keyrings && \
+                     curl -fsSL https://pkgs.k8s.io/core:/stable:/{K8S_MINOR}/deb/Release.key \
+                     | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
+                     echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{K8S_MINOR}/deb/ /' \
+                     | sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null"
+                ))?;
                 pm.update()?;
                 pm.install(&["kubectl"])?;
-                // helm
-                run_sh("curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash")
+                run_remote(pins::HELM.url, pins::HELM.sha256, "bash", "")
             }
             PackageManager::Dnf | PackageManager::Yum => {
-                run_sh(r#"sudo tee /etc/yum.repos.d/kubernetes.repo << 'EOF'
+                sh(&format!(
+                    r#"sudo tee /etc/yum.repos.d/kubernetes.repo > /dev/null << 'EOF'
 [kubernetes]
 name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1.32/rpm/
+baseurl=https://pkgs.k8s.io/core:/stable:/{K8S_MINOR}/rpm/
 enabled=1
 gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1.32/rpm/repodata/repomd.xml.key
-EOF"#)?;
+gpgkey=https://pkgs.k8s.io/core:/stable:/{K8S_MINOR}/rpm/repodata/repomd.xml.key
+EOF"#
+                ))?;
                 pm.install(&["kubectl"])?;
-                run_sh("curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash")
+                run_remote(pins::HELM.url, pins::HELM.sha256, "bash", "")
             }
-            _ => bail!("Install kubectl + Helm manually from https://kubernetes.io/docs/tasks/tools/"),
+            PackageManager::Unknown => bail!("Install kubectl + Helm manually from https://kubernetes.io/docs/tasks/tools/"),
         }
     }
 
     fn uninstall(&self, pm: &PackageManager) -> Result<()> {
         match pm {
-            PackageManager::Brew => {
-                pm.remove(&["kubectl"])?;
-                pm.remove(&["helm"])
-            }
+            PackageManager::Brew | PackageManager::Pacman => pm.remove(&["kubectl", "helm"]),
+            PackageManager::Zypper => pm.remove(&["kubernetes-client", "helm"]),
             _ => {
                 pm.remove(&["kubectl"])?;
-                run_sh("sudo rm -f $(which helm)")
+                sh("sudo rm -f /usr/local/bin/helm")
             }
         }
     }
-}
-
-fn run_sh(cmd: &str) -> Result<()> {
-    let status = Command::new("sh").arg("-c").arg(cmd).status()?;
-    if !status.success() { bail!("command failed"); }
-    Ok(())
 }

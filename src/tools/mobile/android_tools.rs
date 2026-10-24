@@ -10,21 +10,20 @@ impl Tool for AndroidPlatformTools {
     fn category(&self) -> Category { Category::Mobile }
     fn is_installed(&self) -> bool { which::which("adb").is_ok() }
     fn version(&self) -> Option<String> { version_of("adb", &["version"]) }
-    fn install(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Brew => pm.install(&["android-platform-tools"]),
-            PackageManager::Apt  => pm.install(&["android-tools-adb", "android-tools-fastboot"]),
-            PackageManager::Dnf | PackageManager::Yum => pm.install(&["android-tools"]),
-            PackageManager::Pacman => pm.install(&["android-tools"]),
-            _ => bail!("Install Android Platform Tools manually from https://developer.android.com/studio/releases/platform-tools"),
-        }
-    }
-    fn uninstall(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Brew   => pm.remove(&["android-platform-tools"]),
-            PackageManager::Apt    => pm.remove(&["android-tools-adb", "android-tools-fastboot"]),
-            _ => pm.remove(&["android-tools"]),
-        }
-    }
+    fn install(&self, pm: &PackageManager) -> Result<()> { pm.install(&pkgs(pm)?) }
+    fn uninstall(&self, pm: &PackageManager) -> Result<()> { pm.remove(&pkgs(pm)?) }
 }
 
+fn pkgs(pm: &PackageManager) -> Result<Vec<&'static str>> {
+    Ok(match pm {
+        PackageManager::Brew => vec!["android-platform-tools"],
+        // the android-tools-* names are gone from current Debian/Ubuntu
+        PackageManager::Apt => vec!["adb", "fastboot"],
+        PackageManager::Dnf | PackageManager::Yum | PackageManager::Pacman | PackageManager::Zypper => {
+            vec!["android-tools"]
+        }
+        PackageManager::Unknown => bail!(
+            "Install Android Platform Tools manually from https://developer.android.com/tools/releases/platform-tools"
+        ),
+    })
+}

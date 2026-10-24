@@ -1,12 +1,16 @@
+// Acronym-style names (RHEL, WSL, JDK, PHP) read better than Rhel/Wsl here.
+#![allow(clippy::upper_case_acronyms, clippy::enum_variant_names)]
+
+mod cmd;
 mod detect;
 mod package_manager;
 mod tools;
 mod ui;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use dialoguer::{theme::ColorfulTheme, MultiSelect};
+use dialoguer::{theme::ColorfulTheme, Confirm, MultiSelect};
 use package_manager::PackageManager;
 use tools::{all_tools, Category};
 use ui::{InstallResult, print_header, print_summary, spinner};
@@ -62,7 +66,12 @@ fn main() -> Result<()> {
 fn cmd_install(cli: &Cli, os: &detect::OS, pm: &PackageManager) -> Result<()> {
     print_header(&os.to_string(), &pm.to_string());
 
+    if *pm == PackageManager::Unknown {
+        bail!("unsupported platform ({os}): no supported package manager found");
+    }
+
     let tools = all_tools();
+    let installed: Vec<bool> = tools.iter().map(|t| t.is_installed()).collect();
     let skip_set: std::collections::HashSet<String> =
         cli.skip.iter().map(|s| s.to_lowercase()).collect();
 
@@ -70,8 +79,8 @@ fn cmd_install(cli: &Cli, os: &detect::OS, pm: &PackageManager) -> Result<()> {
         (0..tools.len()).collect()
     } else {
         let mut items: Vec<String> = Vec::new();
-        for tool in &tools {
-            let installed_marker = if tool.is_installed() { "●" } else { "○" };
+        for (tool, &inst) in tools.iter().zip(&installed) {
+            let installed_marker = if inst { "●" } else { "○" };
             items.push(format!(
                 "{} {:<22} {}",
                 installed_marker,
@@ -82,7 +91,8 @@ fn cmd_install(cli: &Cli, os: &detect::OS, pm: &PackageManager) -> Result<()> {
 
         let defaults: Vec<bool> = tools
             .iter()
-            .map(|t| !t.is_installed() && !skip_set.contains(&t.name().to_lowercase()))
+            .zip(&installed)
+            .map(|(t, &inst)| !inst && !skip_set.contains(&t.name().to_lowercase()))
             .collect();
 
         println!(
@@ -113,14 +123,26 @@ fn cmd_install(cli: &Cli, os: &detect::OS, pm: &PackageManager) -> Result<()> {
         to_install.len().to_string().bold()
     );
 
-    let _ = pm.update();
+    cmd::sudo_keepalive()?;
+
+    if confirm_update(cli, pm)? {
+        let pb = spinner(&format!("Updating package index ({pm})..."));
+        let update = pm.update();
+        pb.finish_and_clear();
+        match update {
+            Ok(()) => ui::print_done("package index", "updated"),
+            Err(e) => ui::print_warn("package index", &format!("update failed, continuing: {e}")),
+        }
+    } else {
+        ui::print_skipped("package index", "not refreshed — run `sudo pacman -Syu` if installs fail");
+    }
 
     let mut results: Vec<(String, InstallResult)> = Vec::new();
 
     for i in to_install {
         let tool = &tools[i];
 
-        if tool.is_installed() {
+        if installed[i] {
             let v = tool.version().unwrap_or_else(|| String::from("unknown"));
             ui::print_skipped(tool.name(), &format!("already installed ({})", v));
             results.push((
@@ -130,7 +152,7 @@ fn cmd_install(cli: &Cli, os: &detect::OS, pm: &PackageManager) -> Result<()> {
             continue;
         }
 
-        let pb = spinner(&format!("{}...", tool.name()));
+        let pb = spinner(&format!("Installing {}...", tool.name()));
         match tool.install(pm) {
             Ok(()) => {
                 pb.finish_and_clear();
@@ -149,6 +171,21 @@ fn cmd_install(cli: &Cli, os: &detect::OS, pm: &PackageManager) -> Result<()> {
 
     print_summary(&results);
     Ok(())
+}
+
+/// Refreshing on Arch means a full system upgrade, so ask first.
+/// `--all` promises no prompts, so it skips the upgrade instead.
+fn confirm_update(cli: &Cli, pm: &PackageManager) -> Result<bool> {
+    if *pm != PackageManager::Pacman {
+        return Ok(true);
+    }
+    if cli.all {
+        return Ok(false);
+    }
+    Ok(Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt("Arch can only refresh package lists with a full upgrade. Run `pacman -Syu` now?")
+        .default(false)
+        .interact()?)
 }
 
 fn cmd_list() -> Result<()> {
@@ -212,7 +249,28 @@ fn cmd_check() -> Result<()> {
 }
 
 fn cmd_uninstall(pm: &PackageManager, tool_names: Vec<String>, all: bool) -> Result<()> {
+    if *pm == PackageManager::Unknown {
+        bail!("unsupported platform: no supported package manager found");
+    }
     let tools = all_tools();
+
+    if all {
+        let names: Vec<&str> = tools.iter().filter(|t| t.is_installed()).map(|t| t.name()).collect();
+        println!(
+            "\n  {} This removes {} tool(s): {}\n",
+            "!".yellow().bold(),
+            names.len(),
+            names.join(", ").bold()
+        );
+        let sure = Confirm::with_theme(&ColorfulTheme::default())
+            .with_prompt("Uninstall all of them?")
+            .default(false)
+            .interact()?;
+        if !sure {
+            println!("  {}", "Cancelled.".dimmed());
+            return Ok(());
+        }
+    }
 
     let target_indices: Vec<usize> = if all {
         (0..tools.len()).collect()
@@ -262,6 +320,7 @@ fn cmd_uninstall(pm: &PackageManager, tool_names: Vec<String>, all: bool) -> Res
         return Ok(());
     }
 
+    cmd::sudo_keepalive()?;
     println!();
     let mut results: Vec<(String, InstallResult)> = Vec::new();
 
@@ -297,24 +356,22 @@ fn cmd_uninstall(pm: &PackageManager, tool_names: Vec<String>, all: bool) -> Res
 
 fn cmd_self_uninstall() -> Result<()> {
     let exe = std::env::current_exe()?;
-    println!(
-        "\n  {} Remove forge from {}?",
-        "!".yellow().bold(),
-        exe.display().to_string().bold()
-    );
-    print!("  [y/N] ");
-    use std::io::{self, BufRead};
-    let stdin = io::stdin();
-    let line = stdin
-        .lock()
-        .lines()
-        .next()
-        .unwrap_or(Ok(String::new()))?;
-    if line.trim().to_lowercase() == "y" {
-        std::fs::remove_file(&exe)?;
-        println!("  {} forge removed.", "✓".green().bold());
-    } else {
+    let sure = Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("Remove forge from {}?", exe.display()))
+        .default(false)
+        .interact()?;
+    if !sure {
         println!("  {}", "Cancelled.".dimmed());
+        return Ok(());
     }
+    if let Err(e) = std::fs::remove_file(&exe) {
+        if e.kind() != std::io::ErrorKind::PermissionDenied {
+            return Err(e.into());
+        }
+        // /usr/local/bin is usually root-owned (install.sh used sudo)
+        cmd::sudo_keepalive()?;
+        cmd::run(&["sudo", "rm", "-f", &exe.to_string_lossy()])?;
+    }
+    println!("  {} forge removed.", "✓".green().bold());
     Ok(())
 }

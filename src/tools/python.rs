@@ -11,25 +11,15 @@ impl Tool for Python {
     fn is_installed(&self) -> bool { which::which("python3").is_ok() }
     fn version(&self) -> Option<String> { version_of("python3", &["--version"]) }
 
-    fn install(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt => pm.install(&["python3", "python3-pip", "python3-venv"]),
-            PackageManager::Dnf | PackageManager::Yum => {
-                pm.install(&["python3", "python3-pip"])
-            }
-            PackageManager::Pacman => pm.install(&["python", "python-pip"]),
-            PackageManager::Zypper => pm.install(&["python3", "python3-pip"]),
-            PackageManager::Brew => pm.install(&["python"]),
-            _ => pm.install(&["python3"]),
-        }
-    }
+    fn install(&self, pm: &PackageManager) -> Result<()> { pm.install(&pkgs(pm)) }
+    fn uninstall(&self, pm: &PackageManager) -> Result<()> { pm.remove(&pkgs(pm)) }
+}
 
-    fn uninstall(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt => pm.remove(&["python3", "python3-pip", "python3-venv"]),
-            PackageManager::Pacman => pm.remove(&["python", "python-pip"]),
-            PackageManager::Brew => pm.remove(&["python"]),
-            _ => pm.remove(&["python3", "python3-pip"]),
-        }
+fn pkgs(pm: &PackageManager) -> Vec<&'static str> {
+    match pm {
+        PackageManager::Apt => vec!["python3", "python3-pip", "python3-venv"],
+        PackageManager::Pacman => vec!["python", "python-pip"],
+        PackageManager::Brew => vec!["python"],
+        _ => vec!["python3", "python3-pip"],
     }
 }

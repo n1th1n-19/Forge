@@ -1,7 +1,6 @@
-use super::{version_of, Category, Tool};
+use super::{pins, run_remote, sh, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
-use anyhow::{bail, Result};
-use std::process::Command;
+use anyhow::Result;
 
 pub struct RustLang;
 
@@ -13,18 +12,11 @@ impl Tool for RustLang {
     fn version(&self) -> Option<String> { version_of("rustc", &["--version"]) }
 
     fn install(&self, _pm: &PackageManager) -> Result<()> {
-        run_sh("curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y")
+        run_remote(pins::RUSTUP.url, pins::RUSTUP.sha256, "sh", "-y")
     }
 
     fn uninstall(&self, _pm: &PackageManager) -> Result<()> {
-        run_sh("rustup self uninstall -y")
+        // rustup may not be on forge's PATH right after install
+        sh(r#""${CARGO_HOME:-$HOME/.cargo}/bin/rustup" self uninstall -y"#)
     }
-}
-
-fn run_sh(cmd: &str) -> Result<()> {
-    let status = Command::new("sh").arg("-c").arg(cmd).status()?;
-    if !status.success() {
-        bail!("command failed");
-    }
-    Ok(())
 }

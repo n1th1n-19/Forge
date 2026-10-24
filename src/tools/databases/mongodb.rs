@@ -1,7 +1,6 @@
-use crate::tools::{version_of, Category, Tool};
+use crate::tools::{os_release, sh, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
 use anyhow::{bail, Result};
-use std::process::Command;
 
 pub struct MongoshClient;
 
@@ -15,20 +14,29 @@ impl Tool for MongoshClient {
     fn install(&self, pm: &PackageManager) -> Result<()> {
         match pm {
             PackageManager::Brew => pm.install(&["mongosh"]),
-            PackageManager::Apt  => {
-                run_sh("curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg")?;
-                run_sh(&format!(
-                    "echo 'deb [ signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu {} /mongodb-org/8.0 multiverse' | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list",
-                    lsb_codename()
+            PackageManager::Apt => {
+                // MongoDB publishes separate Ubuntu ("multiverse") and Debian ("main") repos
+                let (distro, component) = match os_release("ID").as_deref() {
+                    Some("debian") => ("debian", "main"),
+                    _ => ("ubuntu", "multiverse"),
+                };
+                let codename = os_release("UBUNTU_CODENAME")
+                    .or_else(|| os_release("VERSION_CODENAME"))
+                    .unwrap_or_else(|| "noble".into());
+                sh(&format!(
+                    "curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc \
+                     | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg && \
+                     echo 'deb [ signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/{distro} {codename}/mongodb-org/8.0 {component}' \
+                     | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list > /dev/null"
                 ))?;
                 pm.update()?;
                 pm.install(&["mongodb-mongosh"])
             }
             PackageManager::Dnf | PackageManager::Yum => {
-                run_sh(r#"sudo tee /etc/yum.repos.d/mongodb-org-8.0.repo << 'EOF'
+                sh(r#"sudo tee /etc/yum.repos.d/mongodb-org-8.0.repo > /dev/null << 'EOF'
 [mongodb-org-8.0]
 name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/8.0/x86_64/
+baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/8.0/$basearch/
 gpgcheck=1
 enabled=1
 gpgkey=https://www.mongodb.org/static/pgp/server-8.0.asc
@@ -45,18 +53,4 @@ EOF"#)?;
             _ => pm.remove(&["mongodb-mongosh"]),
         }
     }
-}
-
-fn lsb_codename() -> String {
-    std::process::Command::new("lsb_release")
-        .arg("-cs")
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_else(|_| String::from("noble"))
-}
-
-fn run_sh(cmd: &str) -> Result<()> {
-    let status = Command::new("sh").arg("-c").arg(cmd).status()?;
-    if !status.success() { bail!("command failed"); }
-    Ok(())
 }
