@@ -11,7 +11,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org). Versions fo
 ### Security
 
 - Release pipeline: build and publish split into separate jobs so only the publish job holds a write token; all actions pinned by commit SHA; `persist-credentials: false`; `--locked` builds; `cross` pinned to a commit
-- Releases publish `SHA256SUMS`; `install.sh` verifies the binary against it, installs it root-owned with `install -m 755`, and no longer calls the GitHub API
+- Releases publish `SHA256SUMS`; `install.sh` verifies the binary against it, installs it with `install -m 755` (root-owned when it needs sudo; stays user-owned if `/usr/local/bin` is already user-writable), and no longer calls the GitHub API
 - CI runs with read-only permissions and adds a `cargo audit` job; Dependabot keeps actions and crates current
 - AWS CLI zip (whose installer runs as root) pinned to a version and SHA-256
 - `verify_sha256` rejects empty or malformed expected hashes even outside `set -e`, and accepts uppercase hashes

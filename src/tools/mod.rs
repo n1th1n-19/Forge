@@ -70,7 +70,7 @@ pub trait Tool: Send + Sync {
     /// they must be named explicitly.
     fn protected(&self) -> bool { false }
     /// Something the user must know after a successful install.
-    fn post_install_note(&self) -> Option<&str> { None }
+    fn post_install_note(&self, _pm: &PackageManager) -> Option<&str> { None }
 }
 
 pub fn all_tools() -> Vec<Box<dyn Tool>> {
@@ -145,8 +145,11 @@ fn short_version(out: &str) -> String {
 pub fn home() -> Result<PathBuf> {
     std::env::var_os("HOME")
         .map(PathBuf::from)
-        .filter(|h| h.is_absolute() && h.parent().is_some())
-        .context("HOME is unset, relative or / — refusing to touch dotfiles")
+        .filter(|h| h.is_absolute())
+        // resolve so HOME=/./ or /tmp/.. can't sneak in as /
+        .and_then(|h| h.canonicalize().ok())
+        .filter(|h| h.parent().is_some())
+        .context("HOME is unset, relative, missing or / — refusing to touch dotfiles")
 }
 
 /// Shell rc files that exist — never create one the user doesn't have.
@@ -194,10 +197,19 @@ fn remove_lines_from(f: &Path, is_ours: &dyn Fn(&str) -> bool) -> Result<()> {
 /// Resolves symlinks first so stow/chezmoi-managed dotfiles stay links.
 fn write_atomic(f: &Path, body: &str) -> Result<()> {
     let real = std::fs::canonicalize(f)?;
+    // unique per edit, created exclusively, so concurrent forge runs never share a temp file
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
     let mut tmp = real.clone().into_os_string();
-    tmp.push(".forge-tmp");
+    tmp.push(format!(".forge-tmp-{}-{nanos}", std::process::id()));
     let tmp = PathBuf::from(tmp);
-    std::fs::write(&tmp, body)?;
+    {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        f.write_all(body.as_bytes())?;
+        f.sync_all()?;
+    }
     std::fs::set_permissions(&tmp, std::fs::metadata(&real)?.permissions())?;
     std::fs::rename(&tmp, &real)?;
     Ok(())

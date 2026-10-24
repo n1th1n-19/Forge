@@ -19,8 +19,11 @@ impl Tool for Docker {
         })
     }
 
-    fn post_install_note(&self) -> Option<&str> {
-        Some("you were added to the `docker` group — that is root-equivalent access; log out and back in to apply (or use rootless Docker)")
+    fn post_install_note(&self, pm: &PackageManager) -> Option<&str> {
+        // only the Linux path runs `usermod -aG docker`; Docker Desktop on macOS doesn't
+        (*pm != PackageManager::Brew).then_some(
+            "you were added to the `docker` group — that is root-equivalent access; log out and back in to apply (or use rootless Docker)",
+        )
     }
 
     fn install(&self, pm: &PackageManager) -> Result<()> {
