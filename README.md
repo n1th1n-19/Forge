@@ -38,14 +38,6 @@ Run it as your normal user — not with `sudo`, or user-level tools land in root
 
 ---
 
-## Preview
-
-<p align="center">
-  <img src="assets/forge-ascii.png" alt="forge terminal preview" width="480" />
-</p>
-
----
-
 ## Supported Platforms
 
 | Platform | Package Manager |
