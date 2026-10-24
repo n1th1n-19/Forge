@@ -1,11 +1,10 @@
 #!/usr/bin/env sh
-set -e
+set -eu
 
 REPO="n1th1n-19/forge"
 BIN_NAME="forge"
 INSTALL_DIR="/usr/local/bin"
 
-# Detect OS
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
@@ -28,28 +27,35 @@ case "$OS" in
     ;;
 esac
 
-# Fetch latest release tag
-LATEST=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-  | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+# releases/latest/download redirects to the newest release — no API call or rate limit
+BASE="https://github.com/${REPO}/releases/latest/download"
+ASSET="forge-${TARGET}"
 
-if [ -z "$LATEST" ]; then
-  echo "Could not fetch latest release from https://github.com/${REPO}/releases"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+echo "  forge — ${TARGET}"
+echo "  Downloading..."
+curl -fsSL --proto '=https' --tlsv1.2 "${BASE}/${ASSET}" -o "${TMP}/${ASSET}"
+curl -fsSL --proto '=https' --tlsv1.2 "${BASE}/SHA256SUMS" -o "${TMP}/SHA256SUMS"
+
+echo "  Verifying checksum..."
+grep " ${ASSET}\$" "${TMP}/SHA256SUMS" > "${TMP}/want" || {
+  echo "  No checksum for ${ASSET} in SHA256SUMS — refusing to install"
   exit 1
+}
+if command -v sha256sum >/dev/null 2>&1; then
+  (cd "$TMP" && sha256sum -c want >/dev/null)
+else
+  (cd "$TMP" && shasum -a 256 -c want >/dev/null)
 fi
 
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${LATEST}/forge-${TARGET}"
-
-echo "  forge ${LATEST} — ${TARGET}"
-echo "  Downloading..."
-
-TMP=$(mktemp)
-curl -fsSL "$DOWNLOAD_URL" -o "$TMP"
-chmod +x "$TMP"
-
+# install sets mode 755; with sudo the binary is root-owned, so user-level
+# malware can't swap it for a trojan that later runs `sudo`.
 if [ -w "$INSTALL_DIR" ]; then
-  mv "$TMP" "${INSTALL_DIR}/${BIN_NAME}"
+  install -m 755 "${TMP}/${ASSET}" "${INSTALL_DIR}/${BIN_NAME}"
 else
-  sudo mv "$TMP" "${INSTALL_DIR}/${BIN_NAME}"
+  sudo install -m 755 "${TMP}/${ASSET}" "${INSTALL_DIR}/${BIN_NAME}"
 fi
 
 echo "  Installed to ${INSTALL_DIR}/${BIN_NAME}"

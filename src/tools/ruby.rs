@@ -1,6 +1,6 @@
-use super::{pins, remove_rc_lines, run_remote, sh, version_of, Category, Tool};
+use super::{home, pins, remove_rc_lines, run_remote, sh, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 pub struct Ruby;
 
@@ -34,8 +34,15 @@ impl Tool for Ruby {
         match pm {
             PackageManager::Brew => pm.remove(&["rbenv", "ruby-build"]),
             _ => {
+                if !home()?.join(".rbenv").exists() {
+                    bail!("Ruby isn't managed by rbenv (~/.rbenv missing) — remove it with the tool that installed it");
+                }
                 sh(r#"rm -rf "$HOME/.rbenv""#)?;
-                remove_rc_lines(&["rbenv init", ".rbenv/bin"])
+                // `rbenv init <shell>` writes a dated comment plus an eval line
+                remove_rc_lines(|l| {
+                    l.starts_with("# Added by `rbenv init` on ")
+                        || (l.starts_with(r#"eval "$("#) && l.contains("rbenv init - "))
+                })
             }
         }
     }

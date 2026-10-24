@@ -10,6 +10,8 @@ impl Tool for Python {
     fn category(&self) -> Category { Category::Languages }
     fn is_installed(&self) -> bool { which::which("python3").is_ok() }
     fn version(&self) -> Option<String> { version_of("python3", &["--version"]) }
+    // most distros' own tooling runs on the system python3
+    fn protected(&self) -> bool { true }
 
     fn install(&self, pm: &PackageManager) -> Result<()> { pm.install(&pkgs(pm)) }
     fn uninstall(&self, pm: &PackageManager) -> Result<()> { pm.remove(&pkgs(pm)) }

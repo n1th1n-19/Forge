@@ -19,6 +19,10 @@ impl Tool for Docker {
         })
     }
 
+    fn post_install_note(&self) -> Option<&str> {
+        Some("you were added to the `docker` group — that is root-equivalent access; log out and back in to apply (or use rootless Docker)")
+    }
+
     fn install(&self, pm: &PackageManager) -> Result<()> {
         match pm {
             PackageManager::Brew => return pm.install_cask(&["docker"]),

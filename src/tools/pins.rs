@@ -46,6 +46,13 @@ pub const DOCKER: Script = Script {
     sha256: "2b102d809152ea157a59f171319f489d971273b2d26dd7e9a6d1d737ce89289d",
 };
 
+/// AWS CLI v2 zip — its installer runs as root, so it's pinned like the scripts.
+/// Bump: pick a 2.x tag from github.com/aws/aws-cli, then
+/// `curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-<arch>-<ver>.zip | sha256sum`.
+pub const AWS_VERSION: &str = "2.38.5";
+pub const AWS_SHA256_X86_64: &str = "5def7d1b7e55d892f9a381bb2cb2081a685712464be0d36d5d706af0ac48d0d3";
+pub const AWS_SHA256_AARCH64: &str = "07711a936e9d271045ab937d2c2c5390c25f419e4ba9e25adb9e996031e3f6be";
+
 /// eza release binary for older Debian/Ubuntu that lack the apt package.
 pub const EZA_VERSION: &str = "v0.23.5";
 pub const EZA_SHA256_X86_64: &str = "35c70c5c43c29108075e58b893234c67ef585f0b53a7eaf8e9e7d4eec9f339b4";
@@ -60,7 +67,7 @@ mod tests {
         for s in [&NVM, &HELM, &RUSTUP, &STARSHIP, &OH_MY_ZSH, &RBENV, &DOCKER] {
             assert!(s.sha256.len() == 64 && s.sha256.chars().all(|c| c.is_ascii_hexdigit()), "{}", s.url);
         }
-        for h in [EZA_SHA256_X86_64, EZA_SHA256_AARCH64] {
+        for h in [EZA_SHA256_X86_64, EZA_SHA256_AARCH64, AWS_SHA256_X86_64, AWS_SHA256_AARCH64] {
             assert!(h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()));
         }
     }

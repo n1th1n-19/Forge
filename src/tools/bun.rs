@@ -1,8 +1,19 @@
-use super::{add_rc_line, remove_rc_lines, sh, version_of, Category, Tool};
+use super::{add_rc_line, home, remove_rc_lines, sh, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 pub struct Bun;
+
+const RC_INSTALL: &str = r#"export BUN_INSTALL="$HOME/.bun""#;
+const RC_PATH: &str = r#"export PATH="$BUN_INSTALL/bin:$PATH""#;
+/// Lines forge adds, plus the ones bun's own installer adds.
+const RC_LINES: [&str; 5] = [
+    RC_INSTALL,
+    RC_PATH,
+    "# bun",
+    "# bun completions",
+    r#"[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun""#,
+];
 
 impl Tool for Bun {
     fn name(&self) -> &str { "Bun" }
@@ -33,8 +44,8 @@ impl Tool for Bun {
                     install -m 755 "$dir/bun-linux-$t/bun" "$HOME/.bun/bin/bun"
                     ln -sf bun "$HOME/.bun/bin/bunx"
                 "#)?;
-                add_rc_line(r#"export BUN_INSTALL="$HOME/.bun""#)?;
-                add_rc_line(r#"export PATH="$BUN_INSTALL/bin:$PATH""#)
+                add_rc_line(RC_INSTALL)?;
+                add_rc_line(RC_PATH)
             }
         }
     }
@@ -43,9 +54,11 @@ impl Tool for Bun {
         match pm {
             PackageManager::Brew => pm.remove(&["bun"]),
             _ => {
+                if !home()?.join(".bun").exists() {
+                    bail!("Bun isn't installed in ~/.bun — remove it with the tool that installed it");
+                }
                 sh(r#"rm -rf "$HOME/.bun""#)?;
-                // only the lines the bun installer adds — not every line containing "bun" (e.g. "ubuntu")
-                remove_rc_lines(&["BUN_INSTALL", "# bun completions", "/.bun/_bun"])
+                remove_rc_lines(|l| RC_LINES.contains(&l))
             }
         }
     }

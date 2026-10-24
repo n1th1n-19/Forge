@@ -1,5 +1,5 @@
 use crate::detect::{Distro, OS};
-use crate::cmd::{run, run_codes};
+use crate::cmd::{output, run, run_codes};
 use anyhow::{bail, Result};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +77,15 @@ impl PackageManager {
     }
 
     pub fn remove(&self, pkgs: &[&str]) -> Result<()> {
+        if *self == PackageManager::Apt {
+            // `apt-get remove -y` silently takes dependents with it (removing python3
+            // pulls out netplan/ubuntu-minimal/the desktop). Simulate first and refuse.
+            let sim = output(&[&["apt-get", "-s", "remove"], pkgs].concat())?;
+            let extra = apt_cascade(&sim, pkgs);
+            if !extra.is_empty() {
+                bail!("would also remove {} — refusing; remove manually if intended", extra.join(", "));
+            }
+        }
         let base: &[&str] = match self {
             PackageManager::Apt => &[
                 "sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "remove", "-y",
@@ -118,5 +127,28 @@ fn distro_pkg_manager(distro: &Distro) -> PackageManager {
                 PackageManager::Unknown
             }
         }
+    }
+}
+
+/// Packages an `apt-get -s remove` simulation would remove beyond the ones asked for.
+fn apt_cascade(sim: &str, asked: &[&str]) -> Vec<String> {
+    sim.lines()
+        .filter_map(|l| l.strip_prefix("Remv "))
+        .filter_map(|l| l.split_whitespace().next())
+        .map(|p| p.split(':').next().unwrap_or(p))
+        .filter(|p| !asked.contains(p))
+        .map(str::to_string)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apt_cascade;
+
+    #[test]
+    fn apt_cascade_lists_only_extra_packages() {
+        let sim = "Remv python3 [3.12.3-0ubuntu2]\nRemv netplan.io:amd64 [1.1]\nRemv python3-pip [24.0]\n";
+        assert_eq!(apt_cascade(sim, &["python3", "python3-pip"]), vec!["netplan.io"]);
+        assert!(apt_cascade("Remv tmux [3.4]\n", &["tmux"]).is_empty());
     }
 }

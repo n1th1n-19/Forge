@@ -1,6 +1,6 @@
-use crate::tools::{add_rc_line, has_snap, remove_rc_lines, sh, snap_has, version_of, Category, Tool};
+use crate::tools::{add_rc_line, has_snap, home, remove_rc_lines, sh, snap_has, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 pub struct Flutter;
 
@@ -31,8 +31,14 @@ impl Tool for Flutter {
             PackageManager::Brew => pm.remove(&["flutter"]),
             _ if snap_has("flutter") => sh("sudo snap remove flutter"),
             _ => {
+                // ~/flutter may be the user's own checkout; only remove it if it's the flutter on PATH
+                let ours = home()?.join("flutter/bin/flutter");
+                let on_path = which::which("flutter").ok().and_then(|p| p.canonicalize().ok());
+                if on_path.is_none() || on_path != ours.canonicalize().ok() {
+                    bail!("flutter on PATH isn't ~/flutter — remove it with the tool that installed it");
+                }
                 sh(r#"rm -rf "$HOME/flutter""#)?;
-                remove_rc_lines(&[PATH_LINE])
+                remove_rc_lines(|l| l == PATH_LINE)
             }
         }
     }
