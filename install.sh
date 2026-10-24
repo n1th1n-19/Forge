@@ -50,8 +50,9 @@ else
   (cd "$TMP" && shasum -a 256 -c want >/dev/null)
 fi
 
-# install sets mode 755; with sudo the binary is root-owned, so user-level
-# malware can't swap it for a trojan that later runs `sudo`.
+# install sets mode 755. In the sudo branch the binary is root-owned, so user-level
+# malware can't swap it for a trojan that later runs `sudo`. If INSTALL_DIR is
+# already user-writable (e.g. Homebrew-owned /usr/local on macOS) it stays user-owned.
 if [ -w "$INSTALL_DIR" ]; then
   install -m 755 "${TMP}/${ASSET}" "${INSTALL_DIR}/${BIN_NAME}"
 else

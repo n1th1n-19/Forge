@@ -173,7 +173,7 @@ fn cmd_install(cli: &Cli, os: &detect::OS, pm: &PackageManager) -> Result<()> {
                 pb.finish_and_clear();
                 let v = tool.version().unwrap_or_else(|| String::from("done"));
                 ui::print_done(tool.name(), &v);
-                if let Some(note) = tool.post_install_note() {
+                if let Some(note) = tool.post_install_note(pm) {
                     ui::print_warn(tool.name(), note);
                 }
                 results.push((tool.name().to_string(), InstallResult::Done(v)));

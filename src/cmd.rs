@@ -45,6 +45,8 @@ pub fn sh(script: &str) -> Result<()> {
 /// - `verify_sha256 FILE HASH` fails loudly on mismatch (sha256sum on Linux, shasum on macOS).
 ///   Explicit `return 1`s keep it safe even when called where `set -e` is off (`if`, `||`, `!`).
 const SHELL_LIB: &str = r#"case "${HOME:-}" in /?*) ;; *) echo "refusing to run: HOME is unset, relative or /" >&2; exit 1 ;; esac
+# also catch HOME=/./ or /tmp/.. that resolve to /
+[ "$(cd "$HOME" 2>/dev/null && pwd -P)" != / ] && [ -d "$HOME" ] || { echo "refusing to run: HOME resolves to / or doesn't exist" >&2; exit 1; }
 verify_sha256() {
   want=$(printf '%s' "$2" | tr 'A-F' 'a-f')
   got=$( { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } | cut -d' ' -f1 ) || return 1
