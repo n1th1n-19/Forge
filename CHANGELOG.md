@@ -10,6 +10,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org). Versions fo
 
 ### Security
 
+- Installer scripts (nvm, rustup, Helm, Starship, Oh My Zsh, rbenv, Docker) pinned to a tag/commit and verified by SHA-256 before running (`src/tools/pins.rs`); downloaded to a temp file, never piped into a shell; Go, Gradle, Bun and eza downloads verified against official/pinned checksums; shell steps run with `pipefail`
 - Release pipeline: build and publish split into separate jobs so only the publish job holds a write token; all actions pinned by commit SHA; `persist-credentials: false`; `--locked` builds; `cross` pinned to a commit
 - Releases publish `SHA256SUMS`; `install.sh` verifies the binary against it, installs it with `install -m 755` (root-owned when it needs sudo; stays user-owned if `/usr/local/bin` is already user-writable), and no longer calls the GitHub API
 - CI runs with read-only permissions and adds a `cargo audit` job; Dependabot keeps actions and crates current
@@ -26,8 +27,6 @@ Format: [Conventional Commits](https://www.conventionalcommits.org). Versions fo
 - Cached sudo credential is dropped (`sudo -k`) when forge exits; warning when forge is run via `sudo`
 - `self-uninstall` refuses to delete a cargo build output and handles non-UTF-8 paths
 
-## [0.2.0-unreleased] — merged 2026-10-24, shipped in 0.3.0
-
 ### Added
 
 - Live spinner with elapsed time for package-index update, install and uninstall; command output is captured so it no longer garbles the spinner, and failures show the last lines of stderr
@@ -41,7 +40,6 @@ Format: [Conventional Commits](https://www.conventionalcommits.org). Versions fo
 - Panic in version parsing on multi-byte UTF-8 output
 - Package-index update errors silently ignored; dnf/yum now only treat exit code 100 as success
 - Arch: no more `pacman -Sy` partial upgrades; forge asks before running a full `pacman -Syu` (skipped with `--all`), installs use `-S --needed`
-- Installer scripts (nvm, rustup, Helm, Starship, Oh My Zsh, rbenv, Docker) pinned to a tag/commit and verified by SHA-256 before running (`src/tools/pins.rs`); Go, Gradle, Bun and eza downloads verified against official/pinned checksums; shell steps run with `pipefail`
 - Gradle latest-version lookup (JSON format changed), kubectl version (`--short` removed), Ruby latest-version lookup and missing build deps
 - bat detected as `batcat` on Debian/Ubuntu; eza from apt when available
 - Bun uninstall no longer deletes every rc line containing "bun"; Go/Flutter PATH lines added once and removed on uninstall
@@ -58,6 +56,17 @@ Format: [Conventional Commits](https://www.conventionalcommits.org). Versions fo
 - nvm v0.40.8, Kubernetes repo v1.37; React Native bundle installs eas-cli instead of deprecated expo-cli; PHP installs composer
 - Android platform tools use current `adb`/`fastboot` apt packages; MySQL client package names fixed for Debian, Arch and openSUSE
 - 22 copies of `run_sh` replaced by one shared runner (`src/cmd.rs`)
+
+---
+
+## [0.2.0] — 2026-06-24
+
+### Added
+
+- 15 tools across 3 new categories:
+  - **Mobile**: Android Studio, Android Platform Tools, Flutter, React Native + Expo, Xcode CLI Tools, CocoaPods
+  - **Databases**: PostgreSQL client, MySQL client, mongosh, redis-cli
+  - **Build & Infra**: Maven, Gradle, CMake + Ninja, kubectl + Helm, Podman
 
 ---
 
