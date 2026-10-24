@@ -1,6 +1,6 @@
 use crate::detect::{Distro, OS};
+use crate::cmd::{run, run_codes};
 use anyhow::{bail, Result};
-use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PackageManager {
@@ -38,69 +38,57 @@ impl PackageManager {
     }
 
     pub fn update(&self) -> Result<()> {
-        let status = match self {
-            PackageManager::Apt => run(&["sudo", "apt-get", "update", "-y"]),
-            PackageManager::Dnf => run(&["sudo", "dnf", "check-update"]),
-            PackageManager::Yum => run(&["sudo", "yum", "check-update"]),
-            PackageManager::Pacman => run(&["sudo", "pacman", "-Sy"]),
-            PackageManager::Zypper => run(&["sudo", "zypper", "refresh"]),
+        match self {
+            PackageManager::Apt => run(&[
+                "sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update", "-y",
+            ]),
+            // check-update exits 100 when updates are available — that's success
+            PackageManager::Dnf => run_codes(&["sudo", "dnf", "check-update"], &[0, 100]),
+            PackageManager::Yum => run_codes(&["sudo", "yum", "check-update"], &[0, 100]),
+            // Arch only supports refreshing together with a full upgrade
+            // (`-Sy` + `-S pkg` is a partial upgrade). main.rs asks before calling this.
+            PackageManager::Pacman => run(&["sudo", "pacman", "-Syu", "--noconfirm"]),
+            PackageManager::Zypper => run(&["sudo", "zypper", "--non-interactive", "refresh"]),
             PackageManager::Brew => run(&["brew", "update"]),
             PackageManager::Unknown => bail!("no supported package manager detected"),
-        };
-        // dnf/yum return exit code 100 when updates available — treat as success
-        match status {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                if matches!(self, PackageManager::Dnf | PackageManager::Yum) {
-                    Ok(())
-                } else {
-                    Err(e)
-                }
-            }
         }
     }
 
     pub fn install(&self, pkgs: &[&str]) -> Result<()> {
-        match self {
-            PackageManager::Apt => run(&build_cmd(&["sudo", "apt-get", "install", "-y"], pkgs)),
-            PackageManager::Dnf => run(&build_cmd(&["sudo", "dnf", "install", "-y"], pkgs)),
-            PackageManager::Yum => run(&build_cmd(&["sudo", "yum", "install", "-y"], pkgs)),
-            PackageManager::Pacman => {
-                run(&build_cmd(&["sudo", "pacman", "-S", "--noconfirm"], pkgs))
-            }
-            PackageManager::Zypper => {
-                run(&build_cmd(&["sudo", "zypper", "install", "-y"], pkgs))
-            }
-            PackageManager::Brew => run(&build_cmd(&["brew", "install"], pkgs)),
+        let base: &[&str] = match self {
+            PackageManager::Apt => &[
+                "sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y",
+            ],
+            PackageManager::Dnf => &["sudo", "dnf", "install", "-y"],
+            PackageManager::Yum => &["sudo", "yum", "install", "-y"],
+            PackageManager::Pacman => &["sudo", "pacman", "-S", "--needed", "--noconfirm"],
+            PackageManager::Zypper => &["sudo", "zypper", "--non-interactive", "install"],
+            PackageManager::Brew => &["brew", "install"],
             PackageManager::Unknown => bail!("no supported package manager detected"),
-        }
+        };
+        run(&[base, pkgs].concat())
     }
 
     pub fn install_cask(&self, pkgs: &[&str]) -> Result<()> {
         match self {
-            PackageManager::Brew => {
-                run(&build_cmd(&["brew", "install", "--cask"], pkgs))
-            }
+            PackageManager::Brew => run(&[&["brew", "install", "--cask"], pkgs].concat()),
             _ => self.install(pkgs),
         }
     }
 
     pub fn remove(&self, pkgs: &[&str]) -> Result<()> {
-        match self {
-            PackageManager::Apt => {
-                run(&build_cmd(&["sudo", "apt-get", "remove", "-y"], pkgs))
-            }
-            PackageManager::Dnf => run(&build_cmd(&["sudo", "dnf", "remove", "-y"], pkgs)),
-            PackageManager::Yum => run(&build_cmd(&["sudo", "yum", "remove", "-y"], pkgs)),
-            PackageManager::Pacman => {
-                run(&build_cmd(&["sudo", "pacman", "-R", "--noconfirm"], pkgs))
-            }
-            PackageManager::Zypper => {
-                run(&build_cmd(&["sudo", "zypper", "remove", "-y"], pkgs))
-            }
-            PackageManager::Brew => run(&build_cmd(&["brew", "uninstall"], pkgs)),
+        let base: &[&str] = match self {
+            PackageManager::Apt => &[
+                "sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "remove", "-y",
+            ],
+            PackageManager::Dnf => &["sudo", "dnf", "remove", "-y"],
+            PackageManager::Yum => &["sudo", "yum", "remove", "-y"],
+            PackageManager::Pacman => &["sudo", "pacman", "-R", "--noconfirm"],
+            PackageManager::Zypper => &["sudo", "zypper", "--non-interactive", "remove"],
+            PackageManager::Brew => &["brew", "uninstall"],
             PackageManager::Unknown => bail!("no supported package manager detected"),
-        }
+        };
+        run(&[base, pkgs].concat())
     }
 }
 
@@ -131,19 +119,4 @@ fn distro_pkg_manager(distro: &Distro) -> PackageManager {
             }
         }
     }
-}
-
-fn build_cmd<'a>(base: &[&'a str], pkgs: &[&'a str]) -> Vec<&'a str> {
-    let mut cmd: Vec<&str> = base.to_vec();
-    cmd.extend_from_slice(pkgs);
-    cmd
-}
-
-fn run(args: &[&str]) -> Result<()> {
-    let (prog, rest) = args.split_first().expect("empty command");
-    let status = Command::new(prog).args(rest).status()?;
-    if !status.success() {
-        bail!("command failed: {}", args.join(" "));
-    }
-    Ok(())
 }

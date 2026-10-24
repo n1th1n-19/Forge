@@ -1,7 +1,6 @@
-use super::{version_of, Category, Tool};
+use super::{sh, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
 use anyhow::{bail, Result};
-use std::process::Command;
 
 pub struct GCloud;
 
@@ -14,18 +13,20 @@ impl Tool for GCloud {
 
     fn install(&self, pm: &PackageManager) -> Result<()> {
         match pm {
-            PackageManager::Brew => pm.install_cask(&["google-cloud-sdk"]),
+            PackageManager::Brew => pm.install_cask(&["gcloud-cli"]),
             PackageManager::Apt => {
-                run_sh("curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg")?;
-                run_sh("echo 'deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main' | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list")?;
+                sh("curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+                    | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/cloud.google.gpg && \
+                    echo 'deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main' \
+                    | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list > /dev/null")?;
                 pm.update()?;
                 pm.install(&["google-cloud-cli"])
             }
             PackageManager::Dnf | PackageManager::Yum => {
-                run_sh(r#"sudo tee /etc/yum.repos.d/google-cloud-sdk.repo << 'EOF'
+                sh(r#"sudo tee /etc/yum.repos.d/google-cloud-sdk.repo > /dev/null << EOF
 [google-cloud-cli]
 name=Google Cloud CLI
-baseurl=https://packages.cloud.google.com/yum/repos/cloud-sdk-el8-x86_64
+baseurl=https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-$(uname -m)
 enabled=1
 gpgcheck=1
 repo_gpgcheck=0
@@ -39,16 +40,8 @@ EOF"#)?;
 
     fn uninstall(&self, pm: &PackageManager) -> Result<()> {
         match pm {
-            PackageManager::Brew => pm.remove(&["google-cloud-sdk"]),
+            PackageManager::Brew => pm.remove(&["gcloud-cli"]),
             _ => pm.remove(&["google-cloud-cli"]),
         }
     }
-}
-
-fn run_sh(cmd: &str) -> Result<()> {
-    let status = Command::new("sh").arg("-c").arg(cmd).status()?;
-    if !status.success() {
-        bail!("command failed");
-    }
-    Ok(())
 }

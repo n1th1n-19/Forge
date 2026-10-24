@@ -23,7 +23,7 @@ case "$OS" in
   darwin) TARGET="${ARCH}-apple-darwin" ;;
   *)
     echo "Unsupported OS: $OS"
-    echo "On Windows, download forge.exe from: https://github.com/${REPO}/releases/latest"
+    echo "Supported: Linux and macOS (x86_64, aarch64). On Windows, use WSL."
     exit 1
     ;;
 esac

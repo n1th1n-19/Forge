@@ -1,7 +1,6 @@
-use super::{version_of, Category, Tool};
+use super::{pins, run_remote, sh, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
 use anyhow::{bail, Result};
-use std::process::Command;
 
 pub struct Docker;
 
@@ -14,7 +13,7 @@ impl Tool for Docker {
         // "Docker version 29.5.3, build d1c06ef" → "29.5.3"
         version_of("docker", &["--version"]).map(|s| {
             s.split_whitespace()
-                .find(|t| t.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false))
+                .find(|t| t.starts_with(|c: char| c.is_ascii_digit()))
                 .map(|t| t.trim_end_matches(',').to_string())
                 .unwrap_or(s)
         })
@@ -22,33 +21,25 @@ impl Tool for Docker {
 
     fn install(&self, pm: &PackageManager) -> Result<()> {
         match pm {
-            PackageManager::Brew => pm.install_cask(&["docker"]),
-            _ => {
-                run_sh("curl -fsSL https://get.docker.com | sh")?;
-                // Add current user to docker group
-                run_sh("sudo usermod -aG docker \"$USER\" || true")
-            }
+            PackageManager::Brew => return pm.install_cask(&["docker"]),
+            // get.docker.com only supports Debian/Ubuntu/Fedora/RHEL/CentOS
+            PackageManager::Pacman => pm.install(&["docker", "docker-compose", "docker-buildx"])?,
+            PackageManager::Zypper => pm.install(&["docker", "docker-compose"])?,
+            _ => run_remote(pins::DOCKER.url, pins::DOCKER.sha256, "sh", "")?,
         }
+        sh(r#"sudo systemctl enable --now docker 2>/dev/null || true
+sudo usermod -aG docker "$(id -un)""#)
     }
 
     fn uninstall(&self, pm: &PackageManager) -> Result<()> {
         match pm {
             PackageManager::Brew => pm.remove(&["docker"]),
-            PackageManager::Apt => {
-                pm.remove(&["docker-ce", "docker-ce-cli", "containerd.io", "docker-compose-plugin"])
-            }
-            PackageManager::Dnf | PackageManager::Yum => {
-                pm.remove(&["docker-ce", "docker-ce-cli", "containerd.io"])
-            }
-            _ => bail!("Uninstall Docker manually for this platform"),
+            PackageManager::Apt | PackageManager::Dnf | PackageManager::Yum => pm.remove(&[
+                "docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin", "docker-compose-plugin",
+            ]),
+            PackageManager::Pacman => pm.remove(&["docker", "docker-compose", "docker-buildx"]),
+            PackageManager::Zypper => pm.remove(&["docker", "docker-compose"]),
+            PackageManager::Unknown => bail!("Uninstall Docker manually for this platform"),
         }
     }
-}
-
-fn run_sh(cmd: &str) -> Result<()> {
-    let status = Command::new("sh").arg("-c").arg(cmd).status()?;
-    if !status.success() {
-        bail!("command failed");
-    }
-    Ok(())
 }

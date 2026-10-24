@@ -8,26 +8,18 @@ impl Tool for PHP {
     fn name(&self) -> &str { "PHP" }
     fn description(&self) -> &str { "PHP runtime + composer" }
     fn category(&self) -> Category { Category::Languages }
-    fn is_installed(&self) -> bool { which::which("php").is_ok() }
+    fn is_installed(&self) -> bool { which::which("php").is_ok() && which::which("composer").is_ok() }
     fn version(&self) -> Option<String> { version_of("php", &["--version"]) }
 
-    fn install(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt => pm.install(&["php", "php-cli", "php-mbstring", "php-xml", "php-curl"]),
-            PackageManager::Dnf | PackageManager::Yum => pm.install(&["php", "php-cli", "php-mbstring"]),
-            PackageManager::Pacman => pm.install(&["php"]),
-            PackageManager::Zypper => pm.install(&["php8"]),
-            PackageManager::Brew => pm.install(&["php"]),
-            _ => pm.install(&["php"]),
-        }
-    }
+    fn install(&self, pm: &PackageManager) -> Result<()> { pm.install(&pkgs(pm)) }
+    fn uninstall(&self, pm: &PackageManager) -> Result<()> { pm.remove(&pkgs(pm)) }
+}
 
-    fn uninstall(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt => pm.remove(&["php", "php-cli", "php-mbstring", "php-xml", "php-curl"]),
-            PackageManager::Pacman => pm.remove(&["php"]),
-            PackageManager::Brew => pm.remove(&["php"]),
-            _ => pm.remove(&["php"]),
-        }
+fn pkgs(pm: &PackageManager) -> Vec<&'static str> {
+    match pm {
+        PackageManager::Apt => vec!["php-cli", "php-mbstring", "php-xml", "php-curl", "composer"],
+        PackageManager::Dnf | PackageManager::Yum => vec!["php-cli", "php-mbstring", "php-xml", "composer"],
+        PackageManager::Zypper => vec!["php8", "php-composer2"],
+        _ => vec!["php", "composer"],
     }
 }

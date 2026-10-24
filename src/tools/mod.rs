@@ -16,12 +16,16 @@ pub mod shell;
 pub mod terraform;
 pub mod vcs;
 
+pub mod pins;
+
 pub mod build;
 pub mod databases;
 pub mod mobile;
 
+pub use crate::cmd::{run_remote, sh};
 use crate::package_manager::PackageManager;
 use anyhow::Result;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Category {
@@ -119,29 +123,94 @@ pub fn all_tools() -> Vec<Box<dyn Tool>> {
 }
 
 pub fn version_of(cmd: &str, args: &[&str]) -> Option<String> {
+    let o = std::process::Command::new(cmd).args(args).output().ok()?;
+    let out = if o.stdout.is_empty() { o.stderr } else { o.stdout };
+    Some(short_version(&String::from_utf8_lossy(&out))).filter(|s| !s.is_empty())
+}
+
+/// First line, cut at " (", max 40 chars (char-safe — byte slicing panics on UTF-8).
+fn short_version(out: &str) -> String {
+    let first = out.lines().next().unwrap_or("").trim();
+    let short = first.split(" (").next().unwrap_or(first).trim();
+    short.chars().take(40).collect::<String>().trim().to_string()
+}
+
+pub fn home() -> PathBuf {
+    PathBuf::from(std::env::var("HOME").unwrap_or_default())
+}
+
+/// Shell rc files that exist — never create one the user doesn't have.
+fn rc_files() -> Vec<PathBuf> {
+    [".profile", ".bashrc", ".zshrc"]
+        .iter()
+        .map(|f| home().join(f))
+        .filter(|p| p.exists())
+        .collect()
+}
+
+/// Append `line` to each existing rc file, once.
+pub fn add_rc_line(line: &str) -> Result<()> {
+    for f in rc_files() {
+        let body = std::fs::read_to_string(&f)?;
+        if !body.lines().any(|l| l.trim() == line) {
+            let sep = if body.is_empty() || body.ends_with('\n') { "" } else { "\n" };
+            std::fs::write(&f, format!("{body}{sep}{line}\n"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Drop lines containing any of `needles` from each existing rc file.
+pub fn remove_rc_lines(needles: &[&str]) -> Result<()> {
+    for f in rc_files() {
+        let body = std::fs::read_to_string(&f)?;
+        let kept: Vec<&str> = body.lines().filter(|l| !needles.iter().any(|n| l.contains(n))).collect();
+        if kept.len() != body.lines().count() {
+            std::fs::write(&f, kept.join("\n") + "\n")?;
+        }
+    }
+    Ok(())
+}
+
+pub fn snap_has(name: &str) -> bool {
+    std::process::Command::new("snap")
+        .args(["list", name])
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+pub fn has_snap() -> bool {
+    which::which("snap").is_ok()
+}
+
+/// Value of a key in /etc/os-release, e.g. `os_release("VERSION_CODENAME")`.
+pub fn os_release(key: &str) -> Option<String> {
+    let body = std::fs::read_to_string("/etc/os-release").ok()?;
+    body.lines()
+        .find_map(|l| l.strip_prefix(&format!("{key}=")))
+        .map(|v| v.trim_matches('"').to_string())
+        .filter(|v| !v.is_empty())
+}
+
+pub fn succeeds(cmd: &str, args: &[&str]) -> bool {
     std::process::Command::new(cmd)
         .args(args)
         .output()
-        .ok()
-        .map(|o| {
-            let out = if o.stdout.is_empty() { o.stderr } else { o.stdout };
-            let first_line = String::from_utf8_lossy(&out)
-                .lines()
-                .next()
-                .unwrap_or("")
-                .trim()
-                .to_string();
-            let short = first_line
-                .split(" (")
-                .next()
-                .unwrap_or(&first_line)
-                .trim()
-                .to_string();
-            if short.len() > 40 {
-                short[..40].trim().to_string()
-            } else {
-                short
-            }
-        })
-        .filter(|s| !s.is_empty())
+        .is_ok_and(|o| o.status.success())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::short_version;
+
+    #[test]
+    fn short_version_cuts_paren_and_first_line() {
+        assert_eq!(short_version("git version 2.43.0 (Apple)\nmore"), "git version 2.43.0");
+    }
+
+    #[test]
+    fn short_version_multibyte_does_not_panic() {
+        let s = format!("{}é tail", "a".repeat(39));
+        assert_eq!(short_version(&s).chars().count(), 40);
+    }
 }

@@ -1,9 +1,10 @@
-use super::{version_of, Category, Tool};
+use super::{add_rc_line, remove_rc_lines, sh, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
-use anyhow::{bail, Result};
-use std::process::Command;
+use anyhow::Result;
 
 pub struct Go;
+
+const PATH_LINE: &str = "export PATH=$PATH:/usr/local/go/bin";
 
 impl Tool for Go {
     fn name(&self) -> &str { "Go" }
@@ -16,20 +17,17 @@ impl Tool for Go {
         match pm {
             PackageManager::Brew => pm.install(&["go"]),
             _ => {
-                // Download latest stable from go.dev
-                run_sh(r#"
+                sh(r#"
                     GOARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-                    GOOS=$(uname -s | tr '[:upper:]' '[:lower:]')
                     LATEST=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
-                    TARBALL="${LATEST}.${GOOS}-${GOARCH}.tar.gz"
-                    curl -fsSL "https://go.dev/dl/${TARBALL}" -o /tmp/go.tar.gz
+                    dir=$(mktemp -d); trap 'rm -rf "$dir"' EXIT
+                    URL="https://dl.google.com/go/${LATEST}.linux-${GOARCH}.tar.gz"
+                    curl -fsSL "$URL" -o "$dir/go.tar.gz"
+                    verify_sha256 "$dir/go.tar.gz" "$(curl -fsSL "$URL.sha256")"
                     sudo rm -rf /usr/local/go
-                    sudo tar -C /usr/local -xzf /tmp/go.tar.gz
-                    rm /tmp/go.tar.gz
-                    echo 'export PATH=$PATH:/usr/local/go/bin' >> "$HOME/.profile"
-                    echo 'export PATH=$PATH:/usr/local/go/bin' >> "$HOME/.bashrc"
-                    echo 'export PATH=$PATH:/usr/local/go/bin' >> "$HOME/.zshrc" 2>/dev/null || true
-                "#)
+                    sudo tar -C /usr/local -xzf "$dir/go.tar.gz"
+                "#)?;
+                add_rc_line(PATH_LINE)
             }
         }
     }
@@ -37,15 +35,10 @@ impl Tool for Go {
     fn uninstall(&self, pm: &PackageManager) -> Result<()> {
         match pm {
             PackageManager::Brew => pm.remove(&["go"]),
-            _ => run_sh("sudo rm -rf /usr/local/go"),
+            _ => {
+                sh("sudo rm -rf /usr/local/go")?;
+                remove_rc_lines(&[PATH_LINE])
+            }
         }
     }
-}
-
-fn run_sh(cmd: &str) -> Result<()> {
-    let status = Command::new("sh").arg("-c").arg(cmd).status()?;
-    if !status.success() {
-        bail!("command failed");
-    }
-    Ok(())
 }

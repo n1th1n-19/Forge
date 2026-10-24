@@ -1,4 +1,4 @@
-use crate::tools::{version_of, Category, Tool};
+use crate::tools::{sh, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
 use anyhow::Result;
 
@@ -12,22 +12,22 @@ impl Tool for PostgresClient {
     fn version(&self) -> Option<String> { version_of("psql", &["--version"]) }
 
     fn install(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt    => pm.install(&["postgresql-client"]),
-            PackageManager::Dnf | PackageManager::Yum => pm.install(&["postgresql"]),
-            PackageManager::Pacman => pm.install(&["postgresql-libs"]),
-            PackageManager::Zypper => pm.install(&["postgresql"]),
-            PackageManager::Brew   => pm.install(&["libpq"]),
-            _ => pm.install(&["postgresql-client"]),
+        pm.install(&[pkg(pm)])?;
+        if *pm == PackageManager::Brew {
+            // keg-only formula — not on PATH until linked
+            sh("brew link --force libpq")?;
         }
+        Ok(())
     }
 
-    fn uninstall(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt    => pm.remove(&["postgresql-client"]),
-            PackageManager::Brew   => pm.remove(&["libpq"]),
-            PackageManager::Pacman => pm.remove(&["postgresql-libs"]),
-            _ => pm.remove(&["postgresql"]),
-        }
+    fn uninstall(&self, pm: &PackageManager) -> Result<()> { pm.remove(&[pkg(pm)]) }
+}
+
+fn pkg(pm: &PackageManager) -> &'static str {
+    match pm {
+        PackageManager::Dnf | PackageManager::Yum | PackageManager::Zypper => "postgresql",
+        PackageManager::Pacman => "postgresql-libs",
+        PackageManager::Brew => "libpq",
+        _ => "postgresql-client",
     }
 }

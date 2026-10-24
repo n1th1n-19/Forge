@@ -1,4 +1,4 @@
-use crate::tools::{version_of, Category, Tool};
+use crate::tools::{sh, version_of, Category, Tool};
 use crate::package_manager::PackageManager;
 use anyhow::Result;
 
@@ -12,22 +12,24 @@ impl Tool for MySQLClient {
     fn version(&self) -> Option<String> { version_of("mysql", &["--version"]) }
 
     fn install(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt    => pm.install(&["mysql-client", "default-mysql-client"]),
-            PackageManager::Dnf | PackageManager::Yum => pm.install(&["mysql"]),
-            PackageManager::Pacman => pm.install(&["mysql-clients"]),
-            PackageManager::Zypper => pm.install(&["mysql-client"]),
-            PackageManager::Brew   => pm.install(&["mysql-client"]),
-            _ => pm.install(&["mysql-client"]),
+        pm.install(&[pkg(pm)])?;
+        if *pm == PackageManager::Brew {
+            // keg-only formula — not on PATH until linked
+            sh("brew link --force mysql-client")?;
         }
+        Ok(())
     }
 
-    fn uninstall(&self, pm: &PackageManager) -> Result<()> {
-        match pm {
-            PackageManager::Apt    => pm.remove(&["mysql-client", "default-mysql-client"]),
-            PackageManager::Brew   => pm.remove(&["mysql-client"]),
-            PackageManager::Pacman => pm.remove(&["mysql-clients"]),
-            _ => pm.remove(&["mysql"]),
-        }
+    fn uninstall(&self, pm: &PackageManager) -> Result<()> { pm.remove(&[pkg(pm)]) }
+}
+
+fn pkg(pm: &PackageManager) -> &'static str {
+    match pm {
+        // `default-mysql-client` exists on both Debian and Ubuntu; `mysql-client` is Ubuntu-only
+        PackageManager::Apt => "default-mysql-client",
+        PackageManager::Dnf | PackageManager::Yum => "mysql",
+        PackageManager::Pacman => "mariadb-clients",
+        PackageManager::Zypper => "mariadb-client",
+        _ => "mysql-client",
     }
 }
