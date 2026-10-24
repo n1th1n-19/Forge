@@ -9,6 +9,7 @@ impl Tool for Git {
     fn category(&self) -> Category { Category::Core }
     fn is_installed(&self) -> bool { which::which("git").is_ok() }
     fn version(&self) -> Option<String> { version_of("git", &["--version"]) }
+    fn protected(&self) -> bool { true }
     fn install(&self, pm: &PackageManager) -> Result<()> {
         pm.install(&["git"])
     }
@@ -26,6 +27,7 @@ impl Tool for CurlWget {
         which::which("curl").is_ok() && which::which("wget").is_ok()
     }
     fn version(&self) -> Option<String> { version_of("curl", &["--version"]) }
+    fn protected(&self) -> bool { true }
     fn install(&self, pm: &PackageManager) -> Result<()> {
         pm.install(&["curl", "wget"])
     }
@@ -43,6 +45,7 @@ impl Tool for MakeVim {
         which::which("make").is_ok() && which::which("vim").is_ok()
     }
     fn version(&self) -> Option<String> { version_of("vim", &["--version"]) }
+    fn protected(&self) -> bool { true }
     fn install(&self, pm: &PackageManager) -> Result<()> {
         pm.install(&["make", "vim"])
     }

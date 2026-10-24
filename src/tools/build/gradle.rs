@@ -27,7 +27,8 @@ impl Tool for Gradle {
                 // services.gradle.org returns pretty JSON: "version" : "9.8.2"
                 sh(r#"
                     LATEST=$(curl -fsSL https://services.gradle.org/versions/current | grep -o '"version" *: *"[^"]*"' | head -1 | cut -d'"' -f4)
-                    [ -n "$LATEST" ] || { echo "could not resolve latest Gradle version" >&2; exit 1; }
+                    # network-supplied: must look like 9.8.2 before it touches a URL or sudo path
+                    [[ $LATEST =~ ^[0-9]+(\.[0-9]+)*$ ]] || { echo "unexpected Gradle version: $LATEST" >&2; exit 1; }
                     dir=$(mktemp -d); trap 'rm -rf "$dir"' EXIT
                     URL="https://services.gradle.org/distributions/gradle-${LATEST}-bin.zip"
                     curl -fsSL "$URL" -o "$dir/gradle.zip"
@@ -43,7 +44,13 @@ impl Tool for Gradle {
         match pm {
             PackageManager::Brew => pm.remove(&["gradle"]),
             _ if snap_has("gradle") => sh("sudo snap remove gradle"),
-            _ => sh("sudo rm -f /usr/local/bin/gradle && sudo rm -rf /opt/gradle-*"),
+            // remove only the version forge linked, not every /opt/gradle-* the user installed
+            _ => sh(r#"
+                target=$(readlink -f /usr/local/bin/gradle) || { echo "no /usr/local/bin/gradle" >&2; exit 1; }
+                [[ $target =~ ^/opt/gradle-[0-9.]+/bin/gradle$ ]] || { echo "gradle wasn't installed by forge ($target)" >&2; exit 1; }
+                sudo rm -f /usr/local/bin/gradle
+                sudo rm -rf "${target%/bin/gradle}"
+            "#),
         }
     }
 }

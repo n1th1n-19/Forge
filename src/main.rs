@@ -7,7 +7,7 @@ mod package_manager;
 mod tools;
 mod ui;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use dialoguer::{theme::ColorfulTheme, Confirm, MultiSelect};
@@ -54,12 +54,26 @@ fn main() -> Result<()> {
     let os = detect::detect();
     let pm = PackageManager::detect(&os);
 
-    match cli.command {
+    let result = match cli.command {
         Some(Cmd::List) => cmd_list(),
         Some(Cmd::Check) => cmd_check(),
         Some(Cmd::Uninstall { tools, all }) => cmd_uninstall(&pm, tools, all),
         Some(Cmd::SelfUninstall) => cmd_self_uninstall(),
         None => cmd_install(&cli, &os, &pm),
+    };
+    cmd::sudo_reset();
+    result
+}
+
+/// `sudo forge` installs into root's home and adds root (not you) to groups.
+fn warn_if_sudo_root() {
+    if let Ok(user) = std::env::var("SUDO_USER")
+        && cmd::output(&["id", "-u"]).is_ok_and(|u| u.trim() == "0")
+    {
+        ui::print_warn(
+            "running as root",
+            &format!("user-level tools will go into root's home, not {user}'s — run forge without sudo"),
+        );
     }
 }
 
@@ -69,6 +83,7 @@ fn cmd_install(cli: &Cli, os: &detect::OS, pm: &PackageManager) -> Result<()> {
     if *pm == PackageManager::Unknown {
         bail!("unsupported platform ({os}): no supported package manager found");
     }
+    warn_if_sudo_root();
 
     let tools = all_tools();
     let installed: Vec<bool> = tools.iter().map(|t| t.is_installed()).collect();
@@ -158,6 +173,9 @@ fn cmd_install(cli: &Cli, os: &detect::OS, pm: &PackageManager) -> Result<()> {
                 pb.finish_and_clear();
                 let v = tool.version().unwrap_or_else(|| String::from("done"));
                 ui::print_done(tool.name(), &v);
+                if let Some(note) = tool.post_install_note() {
+                    ui::print_warn(tool.name(), note);
+                }
                 results.push((tool.name().to_string(), InstallResult::Done(v)));
             }
             Err(e) => {
@@ -255,7 +273,11 @@ fn cmd_uninstall(pm: &PackageManager, tool_names: Vec<String>, all: bool) -> Res
     let tools = all_tools();
 
     if all {
-        let names: Vec<&str> = tools.iter().filter(|t| t.is_installed()).map(|t| t.name()).collect();
+        let names: Vec<&str> = tools
+            .iter()
+            .filter(|t| t.is_installed() && !t.protected())
+            .map(|t| t.name())
+            .collect();
         println!(
             "\n  {} This removes {} tool(s): {}\n",
             "!".yellow().bold(),
@@ -273,7 +295,8 @@ fn cmd_uninstall(pm: &PackageManager, tool_names: Vec<String>, all: bool) -> Res
     }
 
     let target_indices: Vec<usize> = if all {
-        (0..tools.len()).collect()
+        // base-system tools (git, curl, python3, …) only go when named explicitly
+        (0..tools.len()).filter(|&i| !tools[i].protected()).collect()
     } else if tool_names.is_empty() {
         let installed_indices: Vec<usize> = tools
             .iter()
@@ -356,6 +379,11 @@ fn cmd_uninstall(pm: &PackageManager, tool_names: Vec<String>, all: bool) -> Res
 
 fn cmd_self_uninstall() -> Result<()> {
     let exe = std::env::current_exe()?;
+    // current_exe resolves symlinks — don't delete a build in a source tree
+    if exe.components().any(|c| c.as_os_str() == "target") {
+        bail!("{} looks like a cargo build output, not an installed forge", exe.display());
+    }
+    let exe_str = exe.to_str().context("forge path is not valid UTF-8")?;
     let sure = Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt(format!("Remove forge from {}?", exe.display()))
         .default(false)
@@ -370,7 +398,7 @@ fn cmd_self_uninstall() -> Result<()> {
         }
         // /usr/local/bin is usually root-owned (install.sh used sudo)
         cmd::sudo_keepalive()?;
-        cmd::run(&["sudo", "rm", "-f", &exe.to_string_lossy()])?;
+        cmd::run(&["sudo", "rm", "-f", exe_str])?;
     }
     println!("  {} forge removed.", "✓".green().bold());
     Ok(())

@@ -24,8 +24,8 @@ pub mod mobile;
 
 pub use crate::cmd::{run_remote, sh};
 use crate::package_manager::PackageManager;
-use anyhow::Result;
-use std::path::PathBuf;
+use anyhow::{Context, Result};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Category {
@@ -66,6 +66,11 @@ pub trait Tool: Send + Sync {
     fn install(&self, pm: &PackageManager) -> Result<()>;
     fn uninstall(&self, pm: &PackageManager) -> Result<()>;
     fn version(&self) -> Option<String>;
+    /// Base-system tools the OS may depend on; `uninstall --all` skips them,
+    /// they must be named explicitly.
+    fn protected(&self) -> bool { false }
+    /// Something the user must know after a successful install.
+    fn post_install_note(&self) -> Option<&str> { None }
 }
 
 pub fn all_tools() -> Vec<Box<dyn Tool>> {
@@ -135,40 +140,66 @@ fn short_version(out: &str) -> String {
     short.chars().take(40).collect::<String>().trim().to_string()
 }
 
-pub fn home() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_default())
+/// The user's home dir. Errors instead of falling back to "" — an empty HOME
+/// would make every rc-file path relative to the current directory.
+pub fn home() -> Result<PathBuf> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|h| h.is_absolute() && h.parent().is_some())
+        .context("HOME is unset, relative or / — refusing to touch dotfiles")
 }
 
 /// Shell rc files that exist — never create one the user doesn't have.
-fn rc_files() -> Vec<PathBuf> {
-    [".profile", ".bashrc", ".zshrc"]
+fn rc_files() -> Result<Vec<PathBuf>> {
+    let home = home()?;
+    Ok([".profile", ".bash_profile", ".bashrc", ".zshrc"]
         .iter()
-        .map(|f| home().join(f))
+        .map(|f| home.join(f))
         .filter(|p| p.exists())
-        .collect()
+        .collect())
 }
 
 /// Append `line` to each existing rc file, once.
 pub fn add_rc_line(line: &str) -> Result<()> {
-    for f in rc_files() {
-        let body = std::fs::read_to_string(&f)?;
-        if !body.lines().any(|l| l.trim() == line) {
-            let sep = if body.is_empty() || body.ends_with('\n') { "" } else { "\n" };
-            std::fs::write(&f, format!("{body}{sep}{line}\n"))?;
-        }
+    rc_files()?.iter().try_for_each(|f| add_line_to(f, line))
+}
+
+/// Drop lines matching `is_ours` (compared trimmed) from each existing rc file.
+/// Match exact lines forge or a known installer wrote — never substrings a user might also use.
+pub fn remove_rc_lines(is_ours: impl Fn(&str) -> bool) -> Result<()> {
+    rc_files()?.iter().try_for_each(|f| remove_lines_from(f, &is_ours))
+}
+
+fn add_line_to(f: &Path, line: &str) -> Result<()> {
+    let body = std::fs::read_to_string(f)?;
+    if body.lines().any(|l| l.trim() == line) {
+        return Ok(());
+    }
+    let nl = if body.contains("\r\n") { "\r\n" } else { "\n" };
+    let sep = if body.is_empty() || body.ends_with('\n') { "" } else { nl };
+    write_atomic(f, &format!("{body}{sep}{line}{nl}"))
+}
+
+fn remove_lines_from(f: &Path, is_ours: &dyn Fn(&str) -> bool) -> Result<()> {
+    let body = std::fs::read_to_string(f)?;
+    // split_inclusive keeps each line's own ending, so CRLF files stay CRLF
+    let kept: String = body.split_inclusive('\n').filter(|l| !is_ours(l.trim())).collect();
+    if kept.len() != body.len() {
+        write_atomic(f, &kept)?;
     }
     Ok(())
 }
 
-/// Drop lines containing any of `needles` from each existing rc file.
-pub fn remove_rc_lines(needles: &[&str]) -> Result<()> {
-    for f in rc_files() {
-        let body = std::fs::read_to_string(&f)?;
-        let kept: Vec<&str> = body.lines().filter(|l| !needles.iter().any(|n| l.contains(n))).collect();
-        if kept.len() != body.lines().count() {
-            std::fs::write(&f, kept.join("\n") + "\n")?;
-        }
-    }
+/// Write via temp file + rename so a crash or full disk can't leave a truncated rc file.
+/// Resolves symlinks first so stow/chezmoi-managed dotfiles stay links.
+fn write_atomic(f: &Path, body: &str) -> Result<()> {
+    let real = std::fs::canonicalize(f)?;
+    let mut tmp = real.clone().into_os_string();
+    tmp.push(".forge-tmp");
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, body)?;
+    std::fs::set_permissions(&tmp, std::fs::metadata(&real)?.permissions())?;
+    std::fs::rename(&tmp, &real)?;
     Ok(())
 }
 
@@ -201,7 +232,38 @@ pub fn succeeds(cmd: &str, args: &[&str]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::short_version;
+    use super::*;
+
+    fn scratch(name: &str, body: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("forge-test-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("rc");
+        std::fs::write(&f, body).unwrap();
+        f
+    }
+
+    #[test]
+    fn rc_add_is_idempotent_and_remove_is_exact() {
+        let f = scratch("exact", "alias x=1\r\n# my NVM_DIR notes\r\n");
+        add_line_to(&f, "export A=1").unwrap();
+        add_line_to(&f, "export A=1").unwrap();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "alias x=1\r\n# my NVM_DIR notes\r\nexport A=1\r\n");
+        remove_lines_from(&f, &|l| l == "export A=1").unwrap();
+        // CRLF kept, user line mentioning NVM_DIR untouched
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "alias x=1\r\n# my NVM_DIR notes\r\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rc_edit_keeps_symlinked_dotfile_a_symlink() {
+        let target = scratch("link", "x\n");
+        let link = target.with_file_name("link");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        add_line_to(&link, "y").unwrap();
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "x\ny\n");
+    }
 
     #[test]
     fn short_version_cuts_paren_and_first_line() {

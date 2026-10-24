@@ -1,4 +1,4 @@
-use super::{sh, Category, Tool};
+use super::{pins, sh, Category, Tool};
 use crate::package_manager::PackageManager;
 use anyhow::Result;
 
@@ -24,12 +24,19 @@ impl Tool for AwsCLI {
             PackageManager::Brew => pm.install(&["awscli"]),
             _ => {
                 pm.install(&["unzip"])?;
-                sh(r#"
-                    dir=$(mktemp -d); trap 'rm -rf "$dir"' EXIT
-                    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o "$dir/aws.zip"
-                    unzip -q "$dir/aws.zip" -d "$dir"
-                    sudo "$dir/aws/install" --update
-                "#)
+                let (arch, sha) = match std::env::consts::ARCH {
+                    "aarch64" => ("aarch64", pins::AWS_SHA256_AARCH64),
+                    _ => ("x86_64", pins::AWS_SHA256_X86_64),
+                };
+                // the bundled installer runs as root — verify the zip first
+                sh(&format!(
+                    r#"dir=$(mktemp -d); trap 'rm -rf "$dir"' EXIT
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-{arch}-{v}.zip" -o "$dir/aws.zip"
+verify_sha256 "$dir/aws.zip" '{sha}'
+unzip -q "$dir/aws.zip" -d "$dir"
+sudo "$dir/aws/install" --update"#,
+                    v = pins::AWS_VERSION
+                ))
             }
         }
     }

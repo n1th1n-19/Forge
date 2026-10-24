@@ -6,7 +6,27 @@ Format: [Conventional Commits](https://www.conventionalcommits.org). Versions fo
 
 ---
 
-## [0.2.0] — 2026-10-24
+## [0.3.0] — 2026-10-24
+
+### Security
+
+- Release pipeline: build and publish split into separate jobs so only the publish job holds a write token; all actions pinned by commit SHA; `persist-credentials: false`; `--locked` builds; `cross` pinned to a commit
+- Releases publish `SHA256SUMS`; `install.sh` verifies the binary against it, installs it root-owned with `install -m 755`, and no longer calls the GitHub API
+- CI runs with read-only permissions and adds a `cargo audit` job; Dependabot keeps actions and crates current
+- AWS CLI zip (whose installer runs as root) pinned to a version and SHA-256
+- `verify_sha256` rejects empty or malformed expected hashes even outside `set -e`, and accepts uppercase hashes
+- Network-supplied Go/Gradle version strings validated before use in URLs or sudo paths; distro codenames validated before going into apt source lines
+- Every shell step refuses to run with an empty, relative or `/` `HOME`; Rust-side dotfile edits do too
+- apt removals are simulated first and refused if they would cascade into other packages (e.g. removing python3 taking the desktop with it)
+- `uninstall --all` skips base-system tools (git, curl/wget, make/vim, python3); they must be named explicitly
+- Uninstall only deletes what forge installed: `~/.nvm`, `~/.rbenv`, `~/.bun`, `/usr/local/go`, `~/flutter` and the linked `/opt/gradle-<ver>` are checked before removal
+- Shell rc files are edited atomically (temp file + rename), keep CRLF line endings and symlinks (stow/chezmoi), and only exact lines forge or a known installer wrote are removed
+- Go upgrade extracts before replacing `/usr/local/go`, so a failed download keeps the old version
+- Docker install warns that the `docker` group is root-equivalent
+- Cached sudo credential is dropped (`sudo -k`) when forge exits; warning when forge is run via `sudo`
+- `self-uninstall` refuses to delete a cargo build output and handles non-UTF-8 paths
+
+## [0.2.0-unreleased] — merged 2026-10-24, shipped in 0.3.0
 
 ### Added
 

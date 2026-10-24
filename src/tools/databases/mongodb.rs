@@ -23,6 +23,10 @@ impl Tool for MongoshClient {
                 let codename = os_release("UBUNTU_CODENAME")
                     .or_else(|| os_release("VERSION_CODENAME"))
                     .unwrap_or_else(|| "noble".into());
+                // goes into a root-written apt source line — keep it to a plain word
+                if !codename.chars().all(|c| c.is_ascii_alphanumeric()) {
+                    bail!("unexpected distro codename {codename:?}");
+                }
                 sh(&format!(
                     "curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc \
                      | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg && \

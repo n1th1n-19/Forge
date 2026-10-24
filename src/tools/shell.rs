@@ -24,9 +24,9 @@ impl Tool for OhMyZsh {
     fn name(&self) -> &str { "Oh My Zsh" }
     fn description(&self) -> &str { "zsh plugin framework (ohmyz.sh)" }
     fn category(&self) -> Category { Category::Shell }
-    fn is_installed(&self) -> bool { home().join(".oh-my-zsh").exists() }
+    fn is_installed(&self) -> bool { home().is_ok_and(|h| h.join(".oh-my-zsh").exists()) }
     fn version(&self) -> Option<String> {
-        let dir = home().join(".oh-my-zsh");
+        let dir = home().ok()?.join(".oh-my-zsh");
         if !dir.exists() {
             return None;
         }

@@ -1,6 +1,9 @@
 use anyhow::{bail, Result};
 use std::process::{Command, Output, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+
+static SUDO_WARM: AtomicBool = AtomicBool::new(false);
 
 /// Run a program with captured output so spinners stay clean.
 /// Fails with the tail of stderr/stdout when the exit code is not in `ok_codes`.
@@ -18,6 +21,14 @@ pub fn run(args: &[&str]) -> Result<()> {
     run_codes(args, &[0])
 }
 
+/// Run a program and return its stdout (fails like `run`).
+pub fn output(args: &[&str]) -> Result<String> {
+    let (prog, rest) = args.split_first().expect("empty command");
+    let out = Command::new(prog).args(rest).stdin(Stdio::null()).output()?;
+    check(&out, &args.join(" "), &[0])?;
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
 /// Run a bash snippet with `set -eo pipefail` so a failed step (e.g. curl in a pipe) fails the whole thing.
 pub fn sh(script: &str) -> Result<()> {
     let out = Command::new("bash")
@@ -29,11 +40,17 @@ pub fn sh(script: &str) -> Result<()> {
     check(&out, script.trim().lines().next().unwrap_or(""), &[0])
 }
 
-/// Helpers available to every `sh` snippet.
-/// `verify_sha256 FILE HASH` fails loudly on mismatch (sha256sum on Linux, shasum on macOS).
-const SHELL_LIB: &str = r#"verify_sha256() {
-  got=$( { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } | cut -d' ' -f1 )
-  [ "$got" = "$2" ] || { echo "checksum mismatch for $(basename "$1"): expected $2, got $got" >&2; return 1; }
+/// Prelude for every `sh` snippet:
+/// - refuse to run with an empty/relative/"/" HOME, so `rm -rf "$HOME/.x"` can't hit `/.x` or the cwd
+/// - `verify_sha256 FILE HASH` fails loudly on mismatch (sha256sum on Linux, shasum on macOS).
+///   Explicit `return 1`s keep it safe even when called where `set -e` is off (`if`, `||`, `!`).
+const SHELL_LIB: &str = r#"case "${HOME:-}" in /?*) ;; *) echo "refusing to run: HOME is unset, relative or /" >&2; exit 1 ;; esac
+verify_sha256() {
+  want=$(printf '%s' "$2" | tr 'A-F' 'a-f')
+  got=$( { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } | cut -d' ' -f1 ) || return 1
+  case "$want" in *[!0-9a-f]* | "") echo "no valid checksum for $(basename "$1")" >&2; return 1 ;; esac
+  [ "${#want}" -eq 64 ] || { echo "no valid checksum for $(basename "$1")" >&2; return 1; }
+  [ "$got" = "$want" ] || { echo "checksum mismatch for $(basename "$1"): expected $want, got $got" >&2; return 1; }
 }"#;
 
 /// Download an installer script to a temp file, check its pinned SHA-256, then run it.
@@ -77,7 +94,11 @@ pub fn sudo_keepalive() -> Result<()> {
     if is_root || which::which("sudo").is_err() {
         return Ok(());
     }
+    if SUDO_WARM.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
     if !Command::new("sudo").arg("-v").status()?.success() {
+        SUDO_WARM.store(false, Ordering::SeqCst);
         bail!("sudo authentication failed");
     }
     std::thread::spawn(|| loop {
@@ -91,6 +112,14 @@ pub fn sudo_keepalive() -> Result<()> {
     Ok(())
 }
 
+/// Drop the cached sudo credential on exit, so forge doesn't leave
+/// passwordless sudo behind for the rest of the timestamp window.
+pub fn sudo_reset() {
+    if SUDO_WARM.load(Ordering::SeqCst) {
+        let _ = Command::new("sudo").arg("-k").status();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,6 +130,16 @@ mod tests {
         assert!(err.contains("boom"), "{err}");
         assert!(sh("false | true").is_err(), "pipefail must catch a failed pipe stage");
         assert!(sh("true").is_ok());
+    }
+
+    #[test]
+    fn verify_sha256_rejects_empty_or_garbage_expected_even_without_set_e() {
+        for bad in ["''", "'<html>'", "'abc'"] {
+            let r = sh(&format!("f=$(mktemp); printf abc > $f; if verify_sha256 $f {bad}; then exit 0; else exit 7; fi"));
+            assert!(r.is_err(), "accepted expected hash {bad}");
+        }
+        let upper = "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD";
+        assert!(sh(&format!("f=$(mktemp); printf abc > $f; verify_sha256 $f {upper}")).is_ok());
     }
 
     #[test]
